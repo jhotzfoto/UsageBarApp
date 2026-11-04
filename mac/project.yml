@@ -1,0 +1,58 @@
+name: UsageBarApp
+options:
+  bundleIdPrefix: com.joshhotz
+  deploymentTarget:
+    macOS: "15.0"
+settings:
+  base:
+    DEVELOPMENT_TEAM: KFT88Q5XQ9
+    CODE_SIGN_STYLE: Manual
+    CODE_SIGN_IDENTITY: "Apple Development"
+    PROVISIONING_PROFILE_SPECIFIER: ""
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    ENABLE_HARDENED_RUNTIME: NO
+    GENERATE_INFOPLIST_FILE: NO
+targets:
+  UsageBarApp:
+    type: application
+    platform: macOS
+    sources: [App, Shared]
+    info:
+      path: App/Info.plist
+      properties:
+        CFBundleDisplayName: UsageBarApp
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSUIElement: true
+        LSMinimumSystemVersion: "15.0"
+    entitlements:
+      path: App/UsageBarApp.entitlements
+      properties:
+        com.apple.security.application-groups: [KFT88Q5XQ9.com.joshhotz.usagebarapp]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.joshhotz.UsageBarApp
+    dependencies:
+      - target: UsageWidget
+  UsageWidget:
+    type: app-extension
+    platform: macOS
+    sources: [Widget, Shared]
+    info:
+      path: Widget/Info.plist
+      properties:
+        CFBundleDisplayName: UsageBarApp
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    entitlements:
+      path: Widget/UsageWidget.entitlements
+      properties:
+        com.apple.security.app-sandbox: true
+        com.apple.security.application-groups: [KFT88Q5XQ9.com.joshhotz.usagebarapp]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.joshhotz.UsageBarApp.Widget

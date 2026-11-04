@@ -1,5 +1,11 @@
 # UsageBarApp: plan (agreed 2026-11-04)
 
+> **Progress (0.1.0):**
+> - Phases 1–2 built: Mac app and Mac widgets.
+> - Phase 3 scripts written, not yet tested on a phone.
+> - Phase 0's iPhone test is waiting on Scriptable.
+> - Phase 4 is partly done: alerts are in; history and chat tracking are not.
+
 A native Mac app + Mac widgets + iPhone widgets showing live Claude usage, built for $0 for personal
 use. It runs **alongside** UsageBar (SwiftBar), which stays exactly as it is. Quality over speed.
 
