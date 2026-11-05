@@ -3,9 +3,9 @@
 Native Mac menu bar app + Mac widgets + iPhone (Scriptable) widgets for live Claude usage.
 Personal, $0, built alongside UsageBar (`../UsageBar`), which stays as it is. See `PLAN.md`.
 
-**Status (0.1.0, 2026-11-04)**
-- **Mac app and Mac widgets:** built, installed and fetching live.
-- **iPhone scripts:** written but not tested yet; they need Scriptable on the phone.
+**Status (0.2.0, 2026-11-05)**
+- **Mac:** feature-complete and tested (18 unit tests plus a live check).
+- **iPhone scripts:** written but not tested yet.
 
 ## Mac app
 Menu bar: `S 12% 2h25m · W 65%` (plus `E x%` once extra usage is being spent), colored green under 70,
@@ -14,18 +14,50 @@ amber 70–89, red 90+, grey when stale.
 The dropdown shows:
 - every limit with %, bar, reset time and countdown
 - extra usage budget ($ used of limit)
-- **This week by product**: Anthropic's own split (Cowork / Chats / Claude Code)
-- last updated, Refresh, claude.ai usage page, Settings…, Quit
+- pace under Session and Weekly ("At this pace: 100% at 9:40 PM" / "~37% at reset (62% unused)")
+- **Planning**: next session, your usual start hour, weekly % per remaining day, and Anthropic's split
+  by product
+- **Top chats this session (est.)**, as in UsageBar 1.4.2: tracked vs logged vs token estimate, top 5,
+  total, others, unattributed
+- a Claude incident banner when status.anthropic.com reports one
+- last updated, Refresh, **History**, claude.ai usage page, Settings…, Quit
+
+**History window:** 5-hour windows (peak and unused), days (idle and active hours), weekly trend,
+estimated top chats this week and per window. History starts 2026-11-01 (imported from UsageBar).
+
+**Chat tracking:**
+- Reads your open claude.ai tab in Chrome: titles, message times and token estimates only.
+- The first time, macOS asks to let UsageBarApp control Chrome. Click **OK**, or turn it on later in
+  System Settings > Privacy & Security > Automation.
+- Chrome needs View > Developer > Allow JavaScript from Apple Events (already on).
+- You can turn it off in Settings > General.
+
+**Claude Code status line:**
+- Settings > Status line > Copy snippet, then paste it into `~/.claude/settings.json`.
+- It prints `S 13% 2h46m · W 69%` (plus pace when you're on track to hit 100%), updated every minute.
 
 **How it works**
 - Reads Claude Code's login from the Keychain item "Claude Code-credentials" via `/usr/bin/security`.
   It reads the access token and expiry only, and never writes or refreshes the item.
 - Calls `api.anthropic.com/api/oauth/usage` every 5 min (Settings: 2–60), and when you open the menu
   if the reading is over 30 s old. Backs off on HTTP 429. Countdowns tick every minute without API calls.
-- **Settings:** check interval, alerts (off by default while UsageBar runs), alert sound with preview and
-  test notification, open at login.
-- **Alerts, once per window:** session 80/95%, weekly 75/90%, extra usage 80/95/100%, new session
-  available, not updating for 30 min.
+- **Settings:**
+  - check interval, chat tracking, number of top chats, open at login
+  - **Alerts** (off by default while UsageBar runs), each with its own toggle and editable thresholds:
+    - session 80/95%
+    - weekly 75/90%
+    - extra usage 80/95/100%
+    - session time left 60/15 min (only while under 70%)
+    - new session available
+    - weekly reset within 24 h
+    - not updating for 30 min
+    - Claude incidents
+  - sound picker, preview, test notification
+  - status line snippet
+- **Data:** `~/Library/Application Support/UsageBarApp/`
+  - `usage_log.csv` (30 days) and `usage_daily.csv`
+  - `chats.json` (titles, times and token counts only)
+  - `statusline.txt`
 
 **Install / update:** `scripts/install-mac.sh`. It builds, signs with the free personal team and copies
 to `~/Applications`.
@@ -58,15 +90,16 @@ old it is.
 | Path | What |
 |---|---|
 | `PLAN.md` | Decisions, rules, architecture, phases |
-| `mac/` | Xcode project (`project.yml` → XcodeGen), `App/`, `Widget/`, `Shared/` |
+| `mac/` | Xcode project (`project.yml` → XcodeGen), `App/`, `Widget/`, and `UsageCore/` (tested logic, `swift test`) |
 | `iphone/` | Scriptable scripts |
 | `scripts/` | `install-mac.sh`, `uninstall-mac.sh` |
 | `docs/` | Market research |
 | `CHANGELOG.md` | Every change, release-note style |
 
 ## Uninstall
-1. Mac: `scripts/uninstall-mac.sh`. It removes the app and widgets, the shared data, the settings and
-   the build folder. If you turned on "Open at login", also remove it in System Settings > General >
+1. Mac: `scripts/uninstall-mac.sh`. It removes the app and widgets, the data folder, the shared data,
+   the settings and the build folders. If you added the status line, remove the `statusLine` entry from
+   `~/.claude/settings.json`. If you turned on "Open at login", also remove it in System Settings > General >
    Login Items.
 2. iPhone: remove the widgets, then delete the two scripts in Scriptable (and Scriptable itself if wanted).
 3. UsageBar (SwiftBar) and the Claude Code Keychain item are not affected.

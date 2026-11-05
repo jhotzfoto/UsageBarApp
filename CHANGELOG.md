@@ -2,6 +2,54 @@
 
 All changes to UsageBarApp, newest first, release-note style. Every change gets an entry.
 
+## 0.2.0 — 2026-11-05
+**New**
+- **History window** (dropdown > History), with Swift Charts:
+  - 5-hour windows: peak and unused at reset
+  - days: idle vs active hours, windows used, average peak, weekly % at end of day
+  - weekly windows: trend chart and table
+  - estimated top chats this week, and a breakdown by chat for each window
+  - 7 / 14 / 30 day range
+- **Pace forecast** under Session and Weekly: "At this pace: 100% at 9:40 PM" (amber) or "~37% at reset
+  (62% unused)". Uses the last 60 min (session) or 24 h (weekly), else the average since the window
+  started.
+- **Planning**: when the next session can start, your usual start hour (from the last 14 days), weekly %
+  left per remaining day, and Anthropic's split by product.
+- **Per-chat tracking** (port of UsageBar 1.4.2): claude.ai via the open Chrome tab, Claude Code
+  transcripts, "Chats: X% tracked vs Y% logged · token estimate: W%" (amber when more than 5 points
+  off), top chats (1–25, default 5), top-N total, others, unattributed.
+- **Claude outage alerts and banner** from status.anthropic.com (checked every 5 min), once per incident.
+- **Editable alerts** (Settings > Alerts): toggle and thresholds for each alert, plus session time left
+  60/15 min while under 70% and weekly reset within 24 h (both from UsageBar), restore defaults.
+- **Claude Code status line**: the app writes `statusline.txt` every minute; Settings > Status line shows
+  the snippet for `~/.claude/settings.json`.
+- **Readings log** with 30-day rollup (UsageBar's CSV format). The first install imports UsageBar's history
+  (read only), so history starts 2026-11-01.
+
+**Changed**
+- Logic moved into a tested Swift package, `mac/UsageCore` (18 tests, run on temporary data only).
+- Claude Code sessions that continue another session are ordered by transcript creation time, so copied
+  messages count once, for the original session. Found by a test: copied messages keep their original
+  timestamps.
+
+**Fixed (found during install)**
+- The app froze at first launch while copying UsageBar's history from iCloud Drive on the main thread
+  (most likely waiting on macOS's iCloud Drive privacy prompt). The import now runs in `install-mac.sh`,
+  and the iPhone copy is written off the main thread.
+
+**Verified**
+- `swift test`: 18/18 passed. Release build with no warnings.
+- Live: readings logged (7,798 rows including the import), status line written ("S 13% 2h46m · W 69%"),
+  2 Claude Code sessions read.
+- History on real data:
+  - Nov 1 has 25 tracked hours (clocks went back) and 2 windows averaging 93%
+  - weekly trend 44 → 69%
+  - session pace ~37% at reset; weekly 31% left, ~12%/day
+- Not yet verified:
+  - claude.ai chat tracking, waiting for you to allow "control Google Chrome"
+  - the History window and dropdown layout, by eye
+  - iPhone
+
 ## 0.1.0 — 2026-11-04
 **New: Mac app** (`mac/`, SwiftUI, built with XcodeGen, signed with the free personal team)
 - Menu bar text with exact colors (rendered as an image), stale state in grey.

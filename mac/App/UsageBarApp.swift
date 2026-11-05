@@ -1,6 +1,7 @@
 import AppKit
 import ServiceManagement
 import SwiftUI
+import UsageCore
 
 @main
 struct UsageBarAppMain: App {
@@ -15,6 +16,12 @@ struct UsageBarAppMain: App {
             MenuBarLabel(model: model)
         }
         .menuBarExtraStyle(.window)
+
+        Window("Claude usage history", id: "history") {
+            HistoryView()
+                .environmentObject(model)
+        }
+        .defaultSize(width: 820, height: 760)
 
         Settings {
             SettingsView()

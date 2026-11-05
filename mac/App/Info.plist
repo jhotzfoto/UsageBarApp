@@ -24,5 +24,7 @@
 	<string>15.0</string>
 	<key>LSUIElement</key>
 	<true/>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>UsageBarApp reads your open claude.ai tab in Chrome to estimate which chats used the most of your session. It never opens, focuses or changes anything in Chrome.</string>
 </dict>
 </plist>

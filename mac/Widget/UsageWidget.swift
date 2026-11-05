@@ -1,4 +1,5 @@
 import SwiftUI
+import UsageCore
 import WidgetKit
 
 /// Desktop / Notification Center widgets. They only read the snapshot the app shares through the
