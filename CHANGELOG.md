@@ -7,6 +7,9 @@ All changes to UsageBarApp, newest first, release-note style. Every change gets 
 - iPhone scripts failed with "JavaScript execution returned a result of an unsupported type". The page
   script's last value was a Promise; it now ends on a plain string, and the result still arrives through
   `completion()`. Found in the first test on the phone.
+- "Sign in with Google" fails in Scriptable's built-in browser (Google blocks embedded browsers). Both
+  scripts now offer email sign-in, with a "Paste login link" option that opens the emailed link inside
+  Scriptable. Only claude.ai links are accepted.
 
 ## 0.2.0 — 2026-11-05
 **New**

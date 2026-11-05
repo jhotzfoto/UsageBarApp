@@ -57,6 +57,47 @@ function log(mode, res) {
   } catch (e) {}
 }
 
+// "Sign in with Google" doesn't work in Scriptable's built-in browser (Google blocks embedded
+// browsers), so offer email sign-in, with a way to paste the emailed login link into this browser.
+// Only claude.ai links are accepted.
+async function signIn() {
+  const pick = new Alert();
+  pick.title = 'Sign in to claude.ai';
+  pick.message = 'Google sign-in is blocked inside Scriptable. Use email instead:\n\n'
+    + '1. Tap "Open claude.ai", type your email, tap Continue with email, then tap Close.\n'
+    + '2. In the email from Anthropic, DON\'T tap the button. Press and hold it, tap Copy Link.\n'
+    + '3. Run this again and tap "Paste login link".\n\n'
+    + 'If the email gives you a code instead, type it on the claude.ai page.';
+  pick.addAction('Open claude.ai');
+  pick.addAction('Paste login link');
+  pick.addCancelAction('Cancel');
+  const i = await pick.present();
+  if (i === -1) return false;
+  let url = 'https://claude.ai/login';
+  if (i === 1) {
+    const p = new Alert();
+    p.title = 'Paste the login link';
+    p.message = 'From the Anthropic email (press and hold the button, Copy Link).';
+    p.addTextField('https://claude.ai/...', Pasteboard.paste() || '');
+    p.addAction('Sign in');
+    p.addCancelAction('Cancel');
+    if (await p.present() === -1) return false;
+    url = (p.textFieldValue(0) || '').trim();
+    if (!/^https:\/\/([a-z0-9-]+\.)?claude\.ai\//i.test(url)) {
+      const bad = new Alert();
+      bad.title = 'Not a claude.ai link';
+      bad.message = 'The link should start with https://claude.ai/';
+      bad.addAction('OK');
+      await bad.present();
+      return false;
+    }
+  }
+  const wv = new WebView();
+  await wv.loadURL(url);
+  await wv.present(true);   // finish signing in, then tap Close
+  return true;
+}
+
 function summary(res) {
   if (res.ok && res.session) {
     return 'Session ' + Math.round(res.session.pct) + '%  ·  Weekly ' + Math.round(res.weekly ? res.weekly.pct : 0) + '%';
@@ -82,12 +123,7 @@ if (config.runsInWidget) {
   Script.setWidget(w);
 } else {
   res = await readUsage();
-  if (res.needLogin) {
-    const wv = new WebView();
-    await wv.loadURL('https://claude.ai/login');
-    await wv.present(true);   // sign in, then tap Close
-    res = await readUsage();
-  }
+  while (res.needLogin && await signIn()) res = await readUsage();
   log('app', res);
   const a = new Alert();
   a.title = 'Claude usage test';
