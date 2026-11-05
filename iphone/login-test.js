@@ -32,6 +32,9 @@ const FETCH_JS = `
   } catch (e) { out.error = String(e); }
   completion(JSON.stringify(out));
 })();
+// The async function returns a Promise, which Scriptable can't accept as the script's value;
+// end on a plain string. The real result arrives through completion().
+'started';
 `;
 
 async function readUsage() {

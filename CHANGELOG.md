@@ -2,6 +2,12 @@
 
 All changes to UsageBarApp, newest first, release-note style. Every change gets an entry.
 
+## 0.2.1 — 2026-11-05
+**Fixed**
+- iPhone scripts failed with "JavaScript execution returned a result of an unsupported type". The page
+  script's last value was a Promise; it now ends on a plain string, and the result still arrives through
+  `completion()`. Found in the first test on the phone.
+
 ## 0.2.0 — 2026-11-05
 **New**
 - **History window** (dropdown > History), with Swift Charts:

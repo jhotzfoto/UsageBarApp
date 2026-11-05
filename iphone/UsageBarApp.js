@@ -31,6 +31,9 @@ const FETCH_JS = `
     completion(JSON.stringify({raw: j}));
   } catch (e) { completion(JSON.stringify({error: String(e)})); }
 })();
+// The async function returns a Promise, which Scriptable can't accept as the script's value;
+// end on a plain string. The real result arrives through completion().
+'started';
 `;
 
 function color(p) { return p >= 90 ? RED : (p >= 70 ? AMBER : GREEN); }
