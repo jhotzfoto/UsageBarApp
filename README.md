@@ -91,6 +91,11 @@ every reading.
 The widget uses the phone's own reading when it can and the Mac's otherwise, and shows which one and how
 old it is.
 
+**Claude History** (separate widget, `iphone/ClaudeHistory.js`, in Scriptable as **Claude History**):
+today in half-hour slots (used, session running, idle, not recorded) and the last 7 days (used and idle
+hours). Large shows both, medium today, small today's numbers; Lock Screen a summary. It draws the Mac's
+history (`UsageBarApp/history.json`, written every 10 minutes while the Mac is awake).
+
 ## Folders
 | Path | What |
 |---|---|

@@ -41,6 +41,7 @@ final class UsageModel: ObservableObject {
     private var errorStreak = 0
     private var lastWidgetKey = ""
     private var lastChatPass = Date.distantPast
+    private var lastHistoryWrite = Date.distantPast
 
     static let dataDir = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent("Library/Application Support/UsageBarApp")
@@ -217,11 +218,26 @@ final class UsageModel: ObservableObject {
             else { return }
             DispatchQueue.main.async { self.iphoneCopyAt = Date() }
         }
+        publishHistory()
         // Widgets have a daily refresh budget: reload only when what they show changes.
         let key = s.limits.map { "\($0.key)\(Int($0.percent))" }.joined() + (s.extra.map { "e\(Int($0.percent))" } ?? "")
             + (s.lastError == nil ? "" : "err")
         if key != lastWidgetKey { lastWidgetKey = key; WidgetCenter.shared.reloadAllTimelines() }
         writeStatusline()
+    }
+
+    /// Today's timeline and the last 7 days for the iPhone's "Claude History" widget, at most every
+    /// 10 minutes, built and written off the main thread.
+    private func publishHistory() {
+        // Not before the log has loaded (it loads in the background at launch).
+        guard !readings.isEmpty, Date().timeIntervalSince(lastHistoryWrite) >= 590 else { return }
+        lastHistoryWrite = Date()
+        let readings = self.readings, windows = self.windows
+        DispatchQueue.global(qos: .utility).async {
+            guard FileManager.default.fileExists(atPath: Self.iphoneMirror.path) else { return }
+            try? PhoneHistory.build(readings: readings, windows: windows)
+                .save(to: Self.iphoneMirror.appendingPathComponent("UsageBarApp/history.json"))
+        }
     }
 
     /// Claude Code's status line prints this file (see README); written every minute.

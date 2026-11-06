@@ -12,11 +12,11 @@
 		0FC7ACB22E976DDE18868631 /* UsageClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 728B2997C8C2F51D4F4E3B26 /* UsageClient.swift */; };
 		343CEA4B11095E4E70900F98 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = C5ABECA417F5BCA2A48C55B2 /* Assets.xcassets */; };
 		3F72F7EEF656CC65EB4EA5BD /* UsageWidget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 10FF1727EC38D9D3E4A2F623 /* UsageWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
-		3F913F9750985747CBC19585 /* CHANGELOG.md in Resources */ = {isa = PBXBuildFile; fileRef = 1909127E957433FC327B37E6 /* CHANGELOG.md */; };
 		40FEEBC0826A0CC99803C98D /* AboutView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91B5DD6FC0C8FE5A4E4DC811 /* AboutView.swift */; };
 		7B17B36FEC8EA857BA2D78AC /* ChatTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 240250597AEA68D3C327BEBC /* ChatTracker.swift */; };
 		9785CB0D9E444A88F8B3ABD2 /* HistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76C67E6111ED2781B67B7AD7 /* HistoryView.swift */; };
 		9C0DE3F749E86F79570C7227 /* UsageCore in Frameworks */ = {isa = PBXBuildFile; productRef = 0627E005296F150AE1AF8D01 /* UsageCore */; };
+		9FC1774ED9E7E4505F74C5EF /* CHANGELOG.md in Resources */ = {isa = PBXBuildFile; fileRef = 0F8BD96324C5528E476A8913 /* CHANGELOG.md */; };
 		B93693AF16B1BF5ECFF3DD9C /* UsageWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5578C508EF036308A6FEB23 /* UsageWidget.swift */; };
 		C31D0FC967E25639A70AC48E /* UsageCore in Frameworks */ = {isa = PBXBuildFile; productRef = 5B68E3E983C07B04ED88136B /* UsageCore */; };
 		DBCF8FC1FD197C8C26A41DF5 /* UsageBarApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = D9A5EE8999E03A0CB07905F5 /* UsageBarApp.swift */; };
@@ -49,10 +49,10 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		0F8BD96324C5528E476A8913 /* CHANGELOG.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = CHANGELOG.md; sourceTree = "<group>"; };
 		10FF1727EC38D9D3E4A2F623 /* UsageWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = UsageWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		16689EC857E2F1D33300AD19 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		17D3CAF47F79295980083461 /* UsageWidget.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = UsageWidget.entitlements; sourceTree = "<group>"; };
-		1909127E957433FC327B37E6 /* CHANGELOG.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = CHANGELOG.md; sourceTree = "<group>"; };
 		240250597AEA68D3C327BEBC /* ChatTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatTracker.swift; sourceTree = "<group>"; };
 		68B3381519AFD78FC24AFAA8 /* UsageModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageModel.swift; sourceTree = "<group>"; };
 		6D614197B5C5D0565EACC5AE /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
@@ -103,8 +103,8 @@
 			isa = PBXGroup;
 			children = (
 				EEC9B78B5742836D396B4E3C /* App */,
+				CCCC41B5768CD8E2A0CC2FA5 /* history-widget */,
 				F275BD5A9BCCAD9BE9EFFA68 /* Packages */,
-				C53813437F298D657254E444 /* timeline */,
 				BE9820CACBC6EBFFF4886AC6 /* Widget */,
 				22C798A38C5F7080D9420C5F /* Products */,
 			);
@@ -120,12 +120,12 @@
 			path = Widget;
 			sourceTree = "<group>";
 		};
-		C53813437F298D657254E444 /* timeline */ = {
+		CCCC41B5768CD8E2A0CC2FA5 /* history-widget */ = {
 			isa = PBXGroup;
 			children = (
-				1909127E957433FC327B37E6 /* CHANGELOG.md */,
+				0F8BD96324C5528E476A8913 /* CHANGELOG.md */,
 			);
-			name = timeline;
+			name = "history-widget";
 			path = ..;
 			sourceTree = "<group>";
 		};
@@ -248,7 +248,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				343CEA4B11095E4E70900F98 /* Assets.xcassets in Resources */,
-				3F913F9750985747CBC19585 /* CHANGELOG.md in Resources */,
+				9FC1774ED9E7E4505F74C5EF /* CHANGELOG.md in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -342,7 +342,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Manual;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 7;
+				CURRENT_PROJECT_VERSION = 8;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = KFT88Q5XQ9;
 				ENABLE_HARDENED_RUNTIME = NO;
@@ -358,7 +358,7 @@
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				MACOSX_DEPLOYMENT_TARGET = 15.0;
-				MARKETING_VERSION = 0.6.0;
+				MARKETING_VERSION = 0.7.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -422,7 +422,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Manual;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 7;
+				CURRENT_PROJECT_VERSION = 8;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = KFT88Q5XQ9;
 				ENABLE_HARDENED_RUNTIME = NO;
@@ -444,7 +444,7 @@
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				MACOSX_DEPLOYMENT_TARGET = 15.0;
-				MARKETING_VERSION = 0.6.0;
+				MARKETING_VERSION = 0.7.0;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;

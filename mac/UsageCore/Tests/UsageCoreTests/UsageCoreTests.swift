@@ -373,5 +373,18 @@ final class UsageCoreTests: XCTestCase {
         let hourly = History.timeline(day: day, slotMinutes: 60, readings: rs, windows: wins, now: now, calendar: cal)
         XCTAssertEqual(hourly.slots.count, 24)
         XCTAssertEqual(hourly.slots[6].used, 20)
+
+        // The iPhone history: today in 30-min slots + 7 days, round-trips through JSON.
+        let ph = PhoneHistory.build(readings: rs, windows: wins, now: now, calendar: cal)
+        XCTAssertEqual(ph.slots.count, 48)
+        XCTAssertEqual(ph.days.count, 7)
+        XCTAssertEqual(ph.days.last?.date, day)
+        XCTAssertEqual(ph.today.used, 60)
+        XCTAssertEqual(ph.today.windows, 1)
+        XCTAssertEqual(ph.resets.first?.unused, 40)
+        XCTAssertEqual(ph.days.first?.noDataHours ?? 0, 24, accuracy: 0.01, "a day with no readings is all not recorded")
+        let back = try? SnapshotStore.decoder.decode(PhoneHistory.self, from: SnapshotStore.encoder.encode(ph))
+        XCTAssertEqual(back?.slots, ph.slots)
+        XCTAssertEqual(back?.days.count, 7)
     }
 }

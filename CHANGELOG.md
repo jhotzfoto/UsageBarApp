@@ -2,6 +2,15 @@
 
 All changes to UsageBarApp, newest first, release-note style. Every change gets an entry.
 
+## 0.7.0 — 2026-11-06
+**New**
+- **Claude History widget for iPhone**, separate from Claude Usage (Scriptable > Claude History).
+  Large: today in half-hour slots (session % used, session running, idle = missed capacity, not
+  recorded, resets and now) plus the last 7 days (used and idle hours) with a 7-day total. Medium:
+  today's timeline. Small: today's numbers with a mini timeline. Lock Screen: a one-line summary.
+- The Mac shares that history with the iPhone every 10 minutes (UsageBarApp/history.json in
+  Scriptable's iCloud folder: usage numbers and times only, no chat titles).
+
 ## 0.6.0 — 2026-11-06
 **New**
 - **Day timeline** at the top of History: one day in 30-minute (or 1-hour) slots, with arrows to step
