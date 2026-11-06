@@ -50,6 +50,7 @@ struct HistoryContent: View {
             DayTimelineCard(style: style)
             SessionsCard(wins: wins, style: style)
             DaysCard(days: days, style: style)
+            ModelsCard(range: range, style: style)
             WeeksCard(weeks: weeks, style: style)
             ChatHistory(range: range)
         }
@@ -700,6 +701,129 @@ struct DayStrip: View {
         case .noData: return HistoryPalette.none.opacity(0.14)
         case .future: return HistoryPalette.none.opacity(0.05)
         }
+    }
+}
+
+// MARK: models
+
+private func tokens(_ n: Double) -> String {
+    n >= 1e9 ? String(format: "%.1fB", n / 1e9) : n >= 1e6 ? String(format: "%.1fM", n / 1e6)
+        : n >= 1e3 ? String(format: "%.0fK", n / 1e3) : String(Int(n))
+}
+
+/// Tokens per model per day (line per model, or stacked bars), a row per day with the model split,
+/// and the official weekly limit % used that day (all models, and per-model limits such as Fable).
+struct ModelsCard: View {
+    @EnvironmentObject var model: UsageModel
+    let range: Int
+    let style: ChartStyle
+    @State private var hover: Date?
+
+    static let palette: [Color] = [HistoryPalette.usage, .purple, .teal, .pink, .indigo, .brown, .mint]
+
+    var body: some View {
+        let cal = Calendar.current
+        let cutoff = cal.startOfDay(for: model.now.addingTimeInterval(-Double(range - 1) * 86400))
+        let days = ModelUsage.days(model.chats?.modelRows ?? []).filter { $0.date >= cutoff }
+        let gains = ModelUsage.limitGains(readings: model.readings)
+        let names = Self.order(days)
+        Card("Models by day",
+             subtitle: "Which models you used each day, by tokens (Claude Code exact; claude.ai chats estimated, by each chat's model). Right: how much of each weekly limit Anthropic tracks you used that day.") {
+            if days.isEmpty {
+                Text("No model data yet. It fills in as chat tracking runs.").foregroundStyle(.secondary)
+            } else {
+                chart(days, names: names, gains: gains)
+                Divider().padding(.vertical, 4)
+                VStack(spacing: 0) {
+                    ForEach(Array(days.reversed().enumerated()), id: \.element.id) { i, d in
+                        row(d, names: names, gains: gains[d.date] ?? [:])
+                            .padding(.vertical, 7)
+                            .background(i % 2 == 1 ? Color.primary.opacity(0.03) : .clear, in: RoundedRectangle(cornerRadius: 6))
+                    }
+                }
+            }
+        }
+    }
+
+    /// Models by total use in the range (so colours stay put), "Unknown" last.
+    static func order(_ days: [ModelUsage.Day]) -> [String] {
+        var totals: [String: Double] = [:]
+        for d in days { for m in d.models { totals[m.name, default: 0] += m.tokens } }
+        return totals.sorted { ($0.key == "Unknown" ? 0 : 1, $0.value) > ($1.key == "Unknown" ? 0 : 1, $1.value) }.map(\.key)
+    }
+
+    static func color(_ name: String, in names: [String]) -> Color {
+        if name == "Unknown" { return .gray }
+        return palette[(names.firstIndex(of: name) ?? 0) % palette.count]
+    }
+
+    private func chart(_ days: [ModelUsage.Day], names: [String], gains: [Date: [String: Double]]) -> some View {
+        Chart {
+            ForEach(days) { d in
+                ForEach(names, id: \.self) { n in
+                    let t = (d.models.first { $0.name == n }?.tokens ?? 0) / 1e6
+                    if style == .line {
+                        LineMark(x: .value("Day", d.date, unit: .day), y: .value("Tokens (M)", t), series: .value("Model", n))
+                            .foregroundStyle(by: .value("Model", n))
+                            .lineStyle(StrokeStyle(lineWidth: 2.2, lineCap: .round, lineJoin: .round))
+                        PointMark(x: .value("Day", d.date, unit: .day), y: .value("Tokens (M)", t))
+                            .foregroundStyle(by: .value("Model", n)).symbolSize(22)
+                    } else if t > 0 {
+                        BarMark(x: .value("Day", d.date, unit: .day), y: .value("Tokens (M)", t))
+                            .foregroundStyle(by: .value("Model", n)).cornerRadius(2)
+                    }
+                }
+            }
+            modelHover(days, names: names, gains: gains)
+        }
+        .chartForegroundStyleScale(domain: names, range: names.map { Self.color($0, in: names) })
+        .chartYAxis { AxisMarks { v in AxisGridLine(); AxisValueLabel { Text("\(v.as(Double.self).map { String(format: "%g", $0) } ?? "")M") } } }
+        .chartLegend(position: .bottom, alignment: .leading)
+        .hoverX($hover)
+        .frame(height: 200)
+    }
+
+    private func modelHover(_ days: [ModelUsage.Day], names: [String], gains: [Date: [String: Double]]) -> some ChartContent {
+        let d = hover.flatMap { t in days.min { abs($0.date.addingTimeInterval(43200).timeIntervalSince(t)) < abs($1.date.addingTimeInterval(43200).timeIntervalSince(t)) } }
+        var lines: [(String, Color)] = []
+        if let d {
+            for m in d.models {
+                lines.append(("\(m.name): \(tokens(m.tokens)) (\(Int((m.tokens / max(1, d.total) * 100).rounded()))%)", Self.color(m.name, in: names)))
+            }
+            for (k, v) in (gains[d.date] ?? [:]).sorted(by: { $0.key < $1.key }) {
+                lines.append(("\(k) weekly limit +\(Int(v.rounded()))%", .secondary))
+            }
+        }
+        return hoverMark(d.map { $0.date.addingTimeInterval(43200) },
+                         title: d?.date.formatted(.dateTime.weekday(.wide).month(.abbreviated).day()) ?? "", lines: lines)
+    }
+
+    private func row(_ d: ModelUsage.Day, names: [String], gains: [String: Double]) -> some View {
+        let isToday = Calendar.current.isDateInToday(d.date)
+        return HStack(spacing: 14) {
+            VStack(alignment: .leading, spacing: 0) {
+                Text(isToday ? "Today" : d.date.formatted(.dateTime.weekday(.abbreviated))).font(.callout.weight(.semibold))
+                Text(d.date.formatted(.dateTime.month(.abbreviated).day())).font(.caption).foregroundStyle(.secondary)
+            }
+            .frame(width: 64, alignment: .leading)
+            VStack(alignment: .leading, spacing: 4) {
+                GeometryReader { g in
+                    HStack(spacing: 1.5) {
+                        ForEach(d.models, id: \.name) { m in
+                            RoundedRectangle(cornerRadius: 2.5).fill(Self.color(m.name, in: names))
+                                .frame(width: max(2, g.size.width * m.tokens / max(1, d.total) - 1.5))
+                        }
+                    }
+                }
+                .frame(height: 10)
+                Text(d.models.prefix(3).map { "\($0.name) \(Int(($0.tokens / max(1, d.total) * 100).rounded()))%" }.joined(separator: " · "))
+                    .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            }
+            Text(tokens(d.total) + " tokens").monospacedDigit().frame(width: 100, alignment: .leading)
+            Text(gains.isEmpty ? "–" : gains.sorted { $0.key < $1.key }.map { "\($0.key) +\(Int($0.value.rounded()))%" }.joined(separator: " · "))
+                .font(.caption).foregroundStyle(.secondary).frame(width: 190, alignment: .leading)
+        }
+        .font(.callout)
     }
 }
 

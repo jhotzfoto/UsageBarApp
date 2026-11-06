@@ -12,9 +12,17 @@ final class ChatTracker {
         let status: String?
         let projects: [String: String]
         let checkedAt: Date
+        var modelRows: [ModelUsage.Row] = []   // tokens per day and model, long-term
     }
 
     private let storeURL: URL
+    private var modelURL: URL { storeURL.deletingLastPathComponent().appendingPathComponent("model_daily.csv") }
+
+    /// The long-term per-model summary with the days the tracker still holds recomputed.
+    private func modelRows(_ ev: [ChatTracking.Event], now: Date) -> [ModelUsage.Row] {
+        ModelUsage.merge(stored: ModelUsage.load(modelURL), fresh: ModelUsage.rows(events: ev),
+                         coveredFrom: ModelUsage.coveredFrom(now: now))
+    }
     private let codeRoot = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".claude/projects")
     private let queue = DispatchQueue(label: "chattracker", qos: .utility)
     private var running = false
@@ -36,7 +44,8 @@ final class ChatTracker {
         let st = load()
         let ev = ChatTracking.events(st)
         return Result(rows: ChatTracking.attribute(readings: readings, events: ev), events: ev, status: st.status,
-                      projects: st.code.compactMapValues(\.project), checkedAt: st.checkedAt ?? .distantPast)
+                      projects: st.code.compactMapValues(\.project), checkedAt: st.checkedAt ?? .distantPast,
+                      modelRows: modelRows(ev, now: Date()))
     }
 
     func pass(readings: [Reading], includeChrome: Bool, completion: @escaping (Result) -> Void) {
@@ -58,7 +67,10 @@ final class ChatTracker {
             self.save(st)
             let ev = ChatTracking.events(st)
             let rows = ChatTracking.attribute(readings: readings, events: ev)
-            let result = Result(rows: rows, events: ev, status: status, projects: st.code.compactMapValues(\.project), checkedAt: now)
+            let models = self.modelRows(ev, now: now)
+            try? ModelUsage.save(models, to: self.modelURL)
+            let result = Result(rows: rows, events: ev, status: status, projects: st.code.compactMapValues(\.project),
+                                checkedAt: now, modelRows: models)
             DispatchQueue.main.async {
                 self.running = false
                 completion(result)

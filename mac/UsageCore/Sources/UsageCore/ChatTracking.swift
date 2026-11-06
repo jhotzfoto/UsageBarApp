@@ -18,6 +18,7 @@ public enum ChatTracking {
         public let title: String
         public let source: String      // "chat" or "code"
         public let tokens: Double
+        public var model: String? = nil   // e.g. "claude-opus-5-5"; chats: the chat's model setting
     }
 
     public struct ChatInfo: Codable, Equatable {
@@ -26,6 +27,7 @@ public enum ChatTracking {
         public var updatedAt = ""
         public var stale = false
         public var events: [[Double]] = []        // [unix ts, tokens]
+        public var model: String?
     }
 
     public struct CodeSession: Codable, Equatable {
@@ -33,6 +35,7 @@ public enum ChatTracking {
         public var project: String?
         public var events: [String: [Double]] = [:]   // message id -> [unix ts, tokens]
         public var created: Double?                    // earliest transcript file creation time
+        public var models: [String: String]?           // message id -> model
     }
 
     /// Everything the tracker remembers between passes (titles, times and token counts only).
@@ -43,6 +46,8 @@ public enum ChatTracking {
         public var offsets: [String: UInt64] = [:]
         public var status: String?
         public var checkedAt: Date?
+        /// Set once transcripts have been read with models (older stores re-read them once).
+        public var modelsRead: Bool?
         public init() {}
     }
 
@@ -63,7 +68,7 @@ public enum ChatTracking {
       if(!org){var orgs=await get("/api/organizations");
         for(var i=0;i<orgs.length;i++){if((orgs[i].capabilities||[]).indexOf("chat")>=0){org=orgs[i].uuid;break;}}}
       var list=await get("/api/organizations/"+org+"/chat_conversations_v2?limit=30&offset=0&archived=false&consistency=strong");
-      var items=(list.data||list).map(function(c){return {uuid:c.uuid,title:c.name||"",updated_at:c.updated_at,platform:c.platform||""};});
+      var items=(list.data||list).map(function(c){return {uuid:c.uuid,title:c.name||"",updated_at:c.updated_at,platform:c.platform||"",model:c.model||""};});
       var want=(ARGS.want||[]).slice();
       items.forEach(function(c){
         if(ARGS.known[c.uuid]!==c.updated_at && c.updated_at>=ARGS.cutoff && want.indexOf(c.uuid)<0) want.push(c.uuid);
@@ -195,6 +200,7 @@ public enum ChatTracking {
             if c.updatedAt != upd && upd >= cutoff { c.stale = true }
             c.title = it["title"] as? String ?? ""
             c.platform = it["platform"] as? String ?? ""
+            if let m = it["model"] as? String, !m.isEmpty { c.model = m }
             c.updatedAt = upd
             st.chats[uuid] = c
         }
@@ -224,6 +230,11 @@ public enum ChatTracking {
     public static func updateCode(_ st: inout Store, root: URL, now: Date) {
         let fm = FileManager.default
         let cutoff = now.addingTimeInterval(-keepDays * 86400)
+        if st.modelsRead != true {
+            // Stores from before models were recorded: read the transcripts again once to fill them in.
+            st.offsets = [:]
+            st.modelsRead = true
+        }
         var paths: [URL] = []
         for proj in (try? fm.contentsOfDirectory(at: root, includingPropertiesForKeys: nil)) ?? [] {
             for f in (try? fm.contentsOfDirectory(at: proj, includingPropertiesForKeys: nil)) ?? [] {
@@ -262,6 +273,11 @@ public enum ChatTracking {
                     let n = usageTokens(u)
                     // Streamed messages repeat on several lines; keep the largest count.
                     if n > (cs.events[key]?[1] ?? 0) { cs.events[key] = [ts.timeIntervalSince1970, n] }
+                    if let model = m["model"] as? String, model.hasPrefix("claude") {
+                        var ms = cs.models ?? [:]
+                        ms[key] = model
+                        cs.models = ms
+                    }
                 }
                 st.code[sid] = cs
             }
@@ -274,6 +290,7 @@ public enum ChatTracking {
         for k in st.chats.keys { st.chats[k]!.events.removeAll { $0[0] < cutoff } }
         for k in Array(st.code.keys) {
             st.code[k]!.events = st.code[k]!.events.filter { $0.value[0] >= cutoff }
+            if let ev = st.code[k]?.events { st.code[k]!.models = st.code[k]!.models?.filter { ev[$0.key] != nil } }
             if st.code[k]!.events.isEmpty { st.code[k] = nil }
         }
         st.offsets = st.offsets.filter { FileManager.default.fileExists(atPath: $0.key) }
@@ -285,7 +302,7 @@ public enum ChatTracking {
     public static func events(_ st: Store) -> [Event] {
         var out: [Event] = []
         for (uuid, c) in st.chats {
-            for e in c.events { out.append(Event(ts: Date(timeIntervalSince1970: e[0]), id: uuid, title: c.title.isEmpty ? "Untitled" : c.title, source: "chat", tokens: e[1])) }
+            for e in c.events { out.append(Event(ts: Date(timeIntervalSince1970: e[0]), id: uuid, title: c.title.isEmpty ? "Untitled" : c.title, source: "chat", tokens: e[1], model: c.model)) }
         }
         func first(_ s: CodeSession) -> Double { s.created ?? s.events.values.map { $0[0] }.min() ?? 0 }
         let sessions = st.code.sorted { first($0.value) < first($1.value) }
@@ -294,7 +311,7 @@ public enum ChatTracking {
             let title = s.title ?? s.project.map { URL(fileURLWithPath: $0).lastPathComponent } ?? String(sid.prefix(8))
             for (k, v) in s.events where !seen.contains(k) {
                 seen.insert(k)
-                out.append(Event(ts: Date(timeIntervalSince1970: v[0]), id: sid, title: title, source: "code", tokens: v[1]))
+                out.append(Event(ts: Date(timeIntervalSince1970: v[0]), id: sid, title: title, source: "code", tokens: v[1], model: s.models?[k]))
             }
         }
         return out.sorted { $0.ts < $1.ts }

@@ -219,7 +219,7 @@ final class UsageCoreTests: XCTestCase {
         try FileManager.default.createDirectory(at: proj, withIntermediateDirectories: true)
         let ts = iso(t0)
         func line(_ sid: String, _ mid: String, _ out: Int) -> String {
-            #"{"type":"assistant","sessionId":"\#(sid)","cwd":"/Users/x/Proj","timestamp":"\#(ts)","message":{"id":"\#(mid)","usage":{"input_tokens":0,"output_tokens":0,"iterations":[{"input_tokens":2,"output_tokens":\#(out),"cache_read_input_tokens":1000,"cache_creation_input_tokens":0}]}}}"#
+            #"{"type":"assistant","sessionId":"\#(sid)","cwd":"/Users/x/Proj","timestamp":"\#(ts)","message":{"id":"\#(mid)","model":"claude-opus-5-5","usage":{"input_tokens":0,"output_tokens":0,"iterations":[{"input_tokens":2,"output_tokens":\#(out),"cache_read_input_tokens":1000,"cache_creation_input_tokens":0}]}}}"#
         }
         let a = proj.appendingPathComponent("s1.jsonl"), b = proj.appendingPathComponent("s2.jsonl")
         try (line("s1", "m1", 10) + "\n" + line("s1", "m1", 50) + "\n" + #"{"type":"ai-title","aiTitle":"Fix bug","sessionId":"s1"}"# + "\n").write(to: a, atomically: true, encoding: .utf8)
@@ -234,6 +234,7 @@ final class UsageCoreTests: XCTestCase {
         var ev = ChatTracking.events(st)
         XCTAssertEqual(ev.count, 1, "copied message counted once")
         XCTAssertEqual(ev.first?.id, "s1")
+        XCTAssertEqual(ev.first?.model, "claude-opus-5-5")
         // Append to s2 and re-read: only the new line is parsed.
         let h = try FileHandle(forWritingTo: b); try h.seekToEnd(); try h.write(contentsOf: Data((line("s2", "m2", 8) + "\n").utf8)); try h.close()
         ChatTracking.updateCode(&st, root: tmp.appendingPathComponent("projects"), now: t0)
@@ -413,5 +414,49 @@ final class UsageCoreTests: XCTestCase {
         XCTAssertTrue(line.filter { $0.ts > reset && $0.ts < at(12) }.allSatisfy { $0.percent == 0 }, "stale % after reset reads 0")
         XCTAssertEqual(Set(line.map(\.segment)).count, 2, "the 12:00–15:00 gap breaks the line")
         XCTAssertEqual(line.last?.segment, 1)
+    }
+
+    func testModelUsageNamesRowsMergeAndLimitGains() throws {
+        XCTAssertEqual(ModelUsage.displayName("claude-opus-5-5"), "Opus 5.5")
+        XCTAssertEqual(ModelUsage.displayName("claude-sonnet-4-5-20250929"), "Sonnet 4.5")
+        XCTAssertEqual(ModelUsage.displayName("claude-3-5-haiku-20241022"), "Haiku 3.5")
+        XCTAssertEqual(ModelUsage.displayName(nil), "Unknown")
+
+        var cal = Calendar(identifier: .gregorian); cal.timeZone = TimeZone(identifier: "UTC")!
+        let day = cal.startOfDay(for: t0)
+        func ev(_ h: Double, _ model: String?, _ src: String, _ n: Double) -> ChatTracking.Event {
+            ChatTracking.Event(ts: day.addingTimeInterval(h * 3600), id: "x", title: "x", source: src, tokens: n, model: model)
+        }
+        let events = [ev(1, "claude-opus-5-5", "code", 100), ev(2, "claude-opus-5-5", "code", 50),
+                      ev(3, "claude-fable-5-1", "chat", 30), ev(4, nil, "chat", 20), ev(30, "claude-opus-5-5", "code", 10)]
+        let rows = ModelUsage.rows(events: events, calendar: cal)
+        XCTAssertEqual(rows.count, 4)
+        let days = ModelUsage.days(rows, calendar: cal)
+        XCTAssertEqual(days.count, 2)
+        XCTAssertEqual(days[0].models.map(\.name), ["Opus 5.5", "Fable 5.1", "Unknown"])
+        XCTAssertEqual(days[0].total, 200)
+
+        // Stored older days survive; covered days are replaced by fresh numbers.
+        let old = ModelUsage.Row(date: "2026-10-01", model: "claude-opus-5-5", source: "code", tokens: 7)
+        let stale = ModelUsage.Row(date: rows[0].date, model: "claude-opus-5-5", source: "code", tokens: 1)
+        let merged = ModelUsage.merge(stored: [old, stale], fresh: rows, coveredFrom: rows[0].date)
+        XCTAssertEqual(merged.first, old)
+        XCTAssertFalse(merged.contains(stale))
+        let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("mu-\(UUID().uuidString).csv")
+        defer { try? FileManager.default.removeItem(at: tmp) }
+        try ModelUsage.save(merged, to: tmp)
+        XCTAssertEqual(ModelUsage.load(tmp), merged)
+
+        // Official limits: rises per day, a new weekly window counts from 0.
+        let r1 = day.addingTimeInterval(7 * 86400), r2 = day.addingTimeInterval(14 * 86400)
+        let rs = [Reading(ts: day.addingTimeInterval(3600), key: "weekly_all", label: "Weekly · all models", percent: 10, resetsAt: r1),
+                  Reading(ts: day.addingTimeInterval(7200), key: "weekly_all", label: "Weekly · all models", percent: 25, resetsAt: r1),
+                  Reading(ts: day.addingTimeInterval(7200), key: "weekly_fable", label: "Weekly · Fable", percent: 5, resetsAt: r1),
+                  Reading(ts: day.addingTimeInterval(9000), key: "weekly_scoped", label: "Weekly · Fable", percent: 9, resetsAt: r1),
+                  Reading(ts: day.addingTimeInterval(90000), key: "weekly_all", label: "Weekly · all models", percent: 3, resetsAt: r2)]
+        let g = ModelUsage.limitGains(readings: rs, calendar: cal)
+        XCTAssertEqual(g[day]?["All models"], 15)
+        XCTAssertEqual(g[day]?["Fable"], 4)
+        XCTAssertEqual(g[cal.startOfDay(for: day.addingTimeInterval(90000))]?["All models"], 3)
     }
 }

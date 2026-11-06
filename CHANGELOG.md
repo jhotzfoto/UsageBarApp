@@ -2,6 +2,18 @@
 
 All changes to UsageBarApp, newest first, release-note style. Every change gets an entry.
 
+## 0.10.0 — 2026-11-06
+**New**
+- **Models by day** in History: tokens per model each day (a line per model, or stacked bars), a row
+  per day with a coloured split ("Opus 5.5 82% · Sonnet 4.5 18%") and total tokens, and the official
+  numbers Anthropic tracks: how much of the all-models and per-model (Fable) weekly limits you used
+  that day. Hover for each model's tokens and share.
+- Claude Code: the exact model of every reply is now recorded (past 8 days filled in once from your
+  transcripts). claude.ai chats: each chat's model is recorded from now on; older chat use shows as
+  "Unknown".
+- A small long-term summary (model_daily.csv: date, model, source, tokens) keeps this beyond the chat
+  tracker's 8 days.
+
 ## 0.9.0 — 2026-11-06
 **New**
 - **History opens right from the menu bar.** Clicking History turns the dropdown into a large History
