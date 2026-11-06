@@ -1,14 +1,12 @@
 // UsageBarApp for iPhone (Scriptable). Home Screen (small, medium) and Lock Screen (circular,
 // rectangular, inline) widgets showing Claude session, weekly and extra usage.
 //
-// Data, in order:
-//   1. The iPhone's own claude.ai login (run this script once in the Scriptable app to sign in).
-//      Works with the Mac off.
-//   2. The Mac app's shared reading in Scriptable's iCloud folder (UsageBarApp/snapshot.json), with
-//      its age shown.
-// Only percentages, reset times and amounts are read. Nothing is sent anywhere.
-//
-// Status: written 2026-11-04, NOT yet tested on a phone (run iphone/login-test.js first).
+// Data, newest of:
+//   1. The phone's own reading: your claude.ai session key (pasted once, kept in the iOS Keychain)
+//      sent with a plain request to claude.ai. Works with the Mac off. If claude.ai's bot check
+//      blocks the request, this route stops; nothing tries to get around it.
+//   2. The Mac app's shared reading in Scriptable's iCloud folder (UsageBarApp/snapshot.json).
+// Only percentages, reset times and amounts are read. The key goes only to claude.ai.
 
 const GREEN = new Color('#34C759'), AMBER = new Color('#FF9F0A'), RED = new Color('#FF3B30');
 const DIM = new Color('#8E8E93');
@@ -18,23 +16,7 @@ const dir = fm.joinPath(fm.documentsDirectory(), 'UsageBarApp');
 const CACHE = fm.joinPath(dir, 'phone-reading.json');
 const MAC = fm.joinPath(dir, 'snapshot.json');
 
-const FETCH_JS = `
-(async () => {
-  try {
-    const o = await fetch('/api/organizations', {credentials: 'include'});
-    const orgs = await o.json().catch(() => null);
-    if (!Array.isArray(orgs)) return completion(JSON.stringify({needLogin: true}));
-    const org = (orgs.find(g => (g.capabilities || []).includes('chat')) || orgs[0]).uuid;
-    const r = await fetch('/api/organizations/' + org + '/usage', {credentials: 'include'});
-    const j = await r.json().catch(() => null);
-    if (!r.ok || !j) return completion(JSON.stringify({error: 'HTTP ' + r.status}));
-    completion(JSON.stringify({raw: j}));
-  } catch (e) { completion(JSON.stringify({error: String(e)})); }
-})();
-// The async function returns a Promise, which Scriptable can't accept as the script's value;
-// end on a plain string. The real result arrives through completion().
-'started';
-`;
+const KEY = 'claude_sessionKey', ORG = 'claude_org';
 
 function color(p) { return p >= 90 ? RED : (p >= 70 ? AMBER : GREEN); }
 function pct(l, now) { return l.resetsAt && new Date(l.resetsAt) <= now ? 0 : l.percent; }
@@ -64,15 +46,35 @@ function parse(raw) {
   return {fetchedAt: new Date().toISOString(), limits, extra, source: 'phone'};
 }
 
+async function get(path, key) {
+  const r = new Request('https://claude.ai' + path);
+  r.headers = {Cookie: 'sessionKey=' + key, Accept: 'application/json'};
+  r.timeoutInterval = 15;
+  const text = await r.loadString();
+  const status = r.response ? r.response.statusCode : 0;
+  const type = (r.response && r.response.headers && (r.response.headers['Content-Type'] || r.response.headers['content-type'])) || '';
+  if (/html/i.test(type) || /^\s*</.test(text)) throw new Error('blocked');
+  let j = null;
+  try { j = JSON.parse(text); } catch (e) {}
+  if (status === 401 || status === 403) throw new Error('badKey');
+  if (status !== 200 || !j) throw new Error('HTTP ' + status);
+  return j;
+}
+
 async function readOwn() {
-  const wv = new WebView();
-  await wv.loadURL('https://claude.ai/');
-  const res = JSON.parse(await wv.evaluateJavaScript(FETCH_JS, true));
-  if (res.raw) {
-    const r = parse(res.raw);
-    if (r.limits.length) return r;
+  if (!Keychain.contains(KEY)) throw new Error('noKey');
+  const key = Keychain.get(KEY);
+  let org = Keychain.contains(ORG) ? Keychain.get(ORG) : null;
+  if (!org) {
+    const orgs = await get('/api/organizations', key);
+    const o = Array.isArray(orgs) ? (orgs.find(g => (g.capabilities || []).includes('chat')) || orgs[0]) : null;
+    if (!o) throw new Error('badKey');
+    org = o.uuid;
+    Keychain.set(ORG, org);
   }
-  throw new Error(res.needLogin ? 'needLogin' : (res.error || 'no data'));
+  const r = parse(await get('/api/organizations/' + org + '/usage', key));
+  if (!r.limits.length) throw new Error('no data');
+  return r;
 }
 
 function readJSON(path) {
@@ -128,7 +130,7 @@ function build(family, reading, err) {
   w.refreshAfterDate = new Date(now.getTime() + 15 * 60000);
   w.url = 'https://claude.ai/settings/usage';
   if (!reading) {
-    const t = w.addText(err === 'needLogin' ? 'Open Scriptable to sign in' : 'No Claude reading yet');
+    const t = w.addText(err === 'noKey' ? 'Open Scriptable to set up' : 'No Claude reading yet');
     t.font = Font.systemFont(12);
     return w;
   }
@@ -193,55 +195,51 @@ function build(family, reading, err) {
   return w;
 }
 
-// "Sign in with Google" doesn't work in Scriptable's built-in browser (Google blocks embedded
-// browsers), so offer email sign-in, with a way to paste the emailed login link into this browser.
-// Only claude.ai links are accepted.
-async function signIn() {
-  const pick = new Alert();
-  pick.title = 'Sign in to claude.ai';
-  pick.message = 'Google sign-in is blocked inside Scriptable. Use email instead:\n\n'
-    + '1. Tap "Open claude.ai", type your email, tap Continue with email, then tap Close.\n'
-    + '2. In the email from Anthropic, DON\'T tap the button. Press and hold it, tap Copy Link.\n'
-    + '3. Run this again and tap "Paste login link".\n\n'
-    + 'If the email gives you a code instead, type it on the claude.ai page.';
-  pick.addAction('Open claude.ai');
-  pick.addAction('Paste login link');
-  pick.addCancelAction('Cancel');
-  const i = await pick.present();
-  if (i === -1) return false;
-  let url = 'https://claude.ai/login';
-  if (i === 1) {
-    const p = new Alert();
-    p.title = 'Paste the login link';
-    p.message = 'From the Anthropic email (press and hold the button, Copy Link).';
-    p.addTextField('https://claude.ai/...', Pasteboard.paste() || '');
-    p.addAction('Sign in');
-    p.addCancelAction('Cancel');
-    if (await p.present() === -1) return false;
-    url = (p.textFieldValue(0) || '').trim();
-    if (!/^https:\/\/([a-z0-9-]+\.)?claude\.ai\//i.test(url)) {
-      const bad = new Alert();
-      bad.title = 'Not a claude.ai link';
-      bad.message = 'The link should start with https://claude.ai/';
-      bad.addAction('OK');
-      await bad.present();
-      return false;
-    }
+const ERRORS = {
+  noKey: 'No session key yet',
+  badKey: 'Session key expired or wrong. Paste a new one.',
+  blocked: "claude.ai's bot check blocked the phone's request. Showing the Mac's reading instead.",
+};
+
+// One-time setup: paste the claude.ai session key (copied on the Mac; see README).
+async function setKey() {
+  const clip = (Pasteboard.paste() || '').trim();
+  const a = new Alert();
+  a.title = 'Paste your claude.ai session key';
+  a.message = 'On the Mac, copy the "sessionKey" value from Chrome (see the steps you were given). It starts with sk-ant-sid. It stays in this iPhone\'s Keychain and is sent only to claude.ai.';
+  a.addSecureTextField('sk-ant-sid…', clip.startsWith('sk-ant-sid') ? clip : '');
+  a.addAction('Save');
+  a.addCancelAction('Cancel');
+  if (await a.present() === -1) return false;
+  const v = (a.textFieldValue(0) || '').trim().replace(/^sessionKey=/, '');
+  if (!v.startsWith('sk-ant-sid')) {
+    const bad = new Alert(); bad.title = "That doesn't look like a session key"; bad.message = 'It should start with sk-ant-sid.'; bad.addAction('OK'); await bad.present();
+    return false;
   }
-  const wv = new WebView();
-  await wv.loadURL(url);
-  await wv.present(true);   // finish signing in, then tap Close
+  Keychain.set(KEY, v);
+  if (Keychain.contains(ORG)) Keychain.remove(ORG);
   return true;
 }
 
-const {reading, err} = await getReading();
+async function showResult(reading, err) {
+  const a = new Alert();
+  a.title = 'Claude usage';
+  const s = reading && reading.limits.find(l => l.group === 'session');
+  const w = reading && reading.limits.find(l => l.key === 'weekly_all');
+  a.message = (reading ? 'Session ' + Math.round(s ? s.percent : 0) + '% · Weekly ' + Math.round(w ? w.percent : 0) + '%\nFrom: ' + (reading.source === 'phone' ? 'this iPhone ✓' : 'the Mac') + '\n' : 'No reading.\n')
+    + (err ? '\nPhone: ' + (ERRORS[err] || err) : '');
+  a.addAction('OK');
+  if (err !== 'noKey') a.addAction('Change session key');
+  else a.addAction('Paste session key');
+  return await a.present();
+}
+
+let {reading, err} = await getReading();
 if (config.runsInWidget) {
   Script.setWidget(build(config.widgetFamily, reading, err));
-} else if (err === 'needLogin') {
-  let again = {reading, err};
-  while (again.err === 'needLogin' && await signIn()) again = await getReading();
-  await build('medium', again.reading, again.err).presentMedium();
 } else {
+  if (err === 'noKey' && await setKey()) ({reading, err} = await getReading());
+  while ((await showResult(reading, err)) === 1 && await setKey()) ({reading, err} = await getReading());
   await build('medium', reading, err).presentMedium();
 }
 Script.complete();

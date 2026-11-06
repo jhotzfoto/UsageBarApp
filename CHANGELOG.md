@@ -2,6 +2,14 @@
 
 All changes to UsageBarApp, newest first, release-note style. Every change gets an entry.
 
+## 0.2.2 — 2026-11-05
+**Changed**
+- iPhone `Claude Usage` no longer signs in through Scriptable's built-in browser. Google blocks it, and the
+  email login never arrived. You now paste your claude.ai session key once; it's stored in the iOS
+  Keychain and sent only to claude.ai in a plain request (no faked browser identity). If claude.ai's bot
+  check blocks the request, the widget says so and shows the Mac's reading. Route chosen after a research
+  agent reviewed existing Scriptable widgets that work the same way.
+
 ## 0.2.1 — 2026-11-05
 **Fixed**
 - iPhone scripts failed with "JavaScript execution returned a result of an unsupported type". The page
