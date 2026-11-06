@@ -2,6 +2,15 @@
 
 All changes to UsageBarApp, newest first, release-note style. Every change gets an entry.
 
+## 0.8.1 — 2026-11-06
+**New**
+- **Hover over any History chart for details.** A guide line follows the pointer with a small card:
+  - Your day: the time, session %, whether a session was running (or idle, or not recorded), usage
+    in that half hour and when the session resets.
+  - 5-hour sessions: when the nearest session ran, its peak and how much was left unused.
+  - Days: hours with a session running, idle hours, sessions and average peak for that day.
+  - Weekly limit: the weekly % at that point and which week it belongs to.
+
 ## 0.8.0 — 2026-11-06 (History redesign)
 **New**
 - **Redesigned History window.** Four summary tiles at the top answer "how am I doing?" first: weekly

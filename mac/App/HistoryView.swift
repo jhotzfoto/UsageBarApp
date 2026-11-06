@@ -105,6 +105,68 @@ enum RenderHistory {
     }
 }
 
+// MARK: hover
+
+/// Tracks the pointer over a chart as a date on the x axis (nil when the pointer leaves).
+struct HoverX: ViewModifier {
+    @Binding var date: Date?
+    func body(content: Content) -> some View {
+        content.chartOverlay { proxy in
+            GeometryReader { g in
+                Rectangle().fill(.clear).contentShape(Rectangle())
+                    .onContinuousHover { phase in
+                        switch phase {
+                        case .active(let p):
+                            guard let frame = proxy.plotFrame else { return }
+                            date = proxy.value(atX: p.x - g[frame].origin.x, as: Date.self)
+                        case .ended:
+                            date = nil
+                        }
+                    }
+            }
+        }
+    }
+}
+
+extension View {
+    func hoverX(_ date: Binding<Date?>) -> some View { modifier(HoverX(date: date)) }
+}
+
+/// The small card that follows the pointer.
+struct Tooltip: View {
+    let title: String
+    let lines: [(String, Color)]
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title).font(.caption.weight(.semibold))
+            ForEach(Array(lines.enumerated()), id: \.offset) { _, l in
+                HStack(spacing: 6) {
+                    Circle().fill(l.1).frame(width: 7, height: 7)
+                    Text(l.0).font(.caption).monospacedDigit()
+                }
+            }
+        }
+        .padding(.horizontal, 10).padding(.vertical, 7)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(Color.primary.opacity(0.1)))
+        .shadow(color: .black.opacity(0.15), radius: 4, y: 1)
+    }
+}
+
+/// A vertical guide at the hovered point with the tooltip on top.
+@ChartContentBuilder
+func hoverMark(_ x: Date?, title: String, lines: [(String, Color)]) -> some ChartContent {
+    if let x {
+        RuleMark(x: .value("Hover", x))
+            .foregroundStyle(Color.primary.opacity(0.3))
+            .lineStyle(StrokeStyle(lineWidth: 1))
+            .annotation(position: .top, alignment: .center, spacing: 0,
+                        overflowResolution: .init(x: .fit(to: .chart), y: .fit(to: .chart))) {
+                Tooltip(title: title, lines: lines)
+            }
+    }
+}
+
 // MARK: building blocks
 
 /// A titled card: title, one-line "what to look for", optional controls on the right.
@@ -257,6 +319,7 @@ struct DayTimelineCard: View {
     let style: ChartStyle
     @State private var dayOffset = 0
     @State private var picking = false
+    @State private var hover: Date?
 
     var body: some View {
         let cal = Calendar.current
@@ -319,7 +382,9 @@ struct DayTimelineCard: View {
             if style == .line { lineMarks(line, isToday: isToday) } else { barMarks(tl.slots) }
             resetMarks(resets)
             if isToday { RuleMark(x: .value("Now", now)).foregroundStyle(UsageStyle.red.opacity(0.6)) }
+            dayHover(tl: tl, line: line, now: now)
         }
+        .hoverX($hover)
         .chartXScale(domain: tl.day...tl.day.addingTimeInterval(86400))
         .chartXAxis {
             AxisMarks(values: .stride(by: .hour, count: 3)) { _ in
@@ -334,6 +399,27 @@ struct DayTimelineCard: View {
         }
         .padding(.top, 14)
         .frame(height: 230)
+    }
+
+    /// What was going on at the hovered time: session %, whether a session was running, its reset.
+    private func dayHover(tl: History.DayTimeline, line: [History.LinePoint], now: Date) -> some ChartContent {
+        let h = hover.flatMap { $0 >= tl.day && $0 <= min(now, tl.day.addingTimeInterval(86400)) ? $0 : nil }
+        let slot = h.flatMap { t in tl.slots.first { $0.start <= t && t < $0.end } }
+        let win = h.flatMap { t in tl.windows.first { $0.start <= t && t < $0.reset } }
+        var lines: [(String, Color)] = []
+        if let slot {
+            if slot.state == .noData {
+                lines.append(("Not recorded (Mac asleep)", HistoryPalette.none))
+            } else {
+                if style == .line, let t = h, let p = line.last(where: { $0.ts <= t }), slot.state != .idle {
+                    lines.append(("Session \(Int(p.percent))%", HistoryPalette.usage))
+                }
+                if slot.used > 0 { lines.append((String(format: "%.0f%% used this half hour", slot.used), HistoryPalette.usage)) }
+                lines.append(slot.state == .active ? ("Session running", HistoryPalette.running) : ("Idle: no session", HistoryPalette.missed))
+                if let w = win { lines.append(("Session resets \(w.reset.formatted(date: .omitted, time: .shortened))", .secondary)) }
+            }
+        }
+        return hoverMark(h, title: h?.formatted(date: .omitted, time: .shortened) ?? "", lines: lines)
     }
 
     @ChartContentBuilder
@@ -397,6 +483,22 @@ struct DayTimelineCard: View {
 struct SessionsCard: View {
     let wins: [History.Window]
     let style: ChartStyle
+    @State private var hover: Date?
+
+    /// The session nearest the pointer: when it ran, its peak and what was left.
+    private func sessionHover() -> some ChartContent {
+        let w = hover.flatMap { t in wins.min { abs($0.reset.timeIntervalSince(t)) < abs($1.reset.timeIntervalSince(t)) } }
+        var lines: [(String, Color)] = []
+        if let w {
+            lines.append(("Peak \(Int(w.peak))%", HistoryPalette.usage))
+            if let u = w.unused { lines.append(("\(Int(u))% left unused", HistoryPalette.missed)) }
+            else { lines.append(("Still running", HistoryPalette.running)) }
+        }
+        let title = w.map {
+            "\($0.start.formatted(.dateTime.weekday(.abbreviated).hour().minute())) – \($0.reset.formatted(date: .omitted, time: .shortened))"
+        } ?? ""
+        return hoverMark(w?.reset, title: title, lines: lines)
+    }
 
     var body: some View {
         let done = wins.filter(\.done)
@@ -436,7 +538,9 @@ struct SessionsCard: View {
                                 Text("average \(Int(a.rounded()))%").font(.caption2.weight(.medium)).foregroundStyle(.secondary)
                             }
                     }
+                    sessionHover()
                 }
+                .hoverX($hover)
                 .chartYScale(domain: 0...100)
                 .chartYAxis { AxisMarks(values: [0, 50, 100]) { v in AxisGridLine(); AxisValueLabel { Text("\(v.as(Int.self) ?? 0)%") } } }
                 .frame(height: 190)
@@ -459,6 +563,21 @@ struct DaysCard: View {
     @EnvironmentObject var model: UsageModel
     let days: [History.Day]
     let style: ChartStyle
+    @State private var hover: Date?
+
+    /// The day under the pointer: hours running, idle, sessions and average peak.
+    private func dayHover() -> some ChartContent {
+        let d = hover.flatMap { t in days.min { abs($0.date.addingTimeInterval(43200).timeIntervalSince(t)) < abs($1.date.addingTimeInterval(43200).timeIntervalSince(t)) } }
+        var lines: [(String, Color)] = []
+        if let d {
+            lines.append((hrs(max(0, d.trackedHours - d.idleHours)) + " session running", HistoryPalette.running))
+            lines.append((hrs(d.idleHours) + " idle", HistoryPalette.missed))
+            lines.append(("\(d.windows) sessions, average peak \(pct(d.avgPeak))", HistoryPalette.usage))
+            if d.trackedHours < 23.5 { lines.append((hrs(24 - d.trackedHours) + " not recorded", HistoryPalette.none)) }
+        }
+        return hoverMark(d.map { $0.date.addingTimeInterval(43200) },
+                         title: d?.date.formatted(.dateTime.weekday(.wide).month(.abbreviated).day()) ?? "", lines: lines)
+    }
 
     var body: some View {
         Card("Days", subtitle: "Hours with a session running versus idle hours you could have used. Each row shows the day hour by hour.") {
@@ -484,7 +603,9 @@ struct DaysCard: View {
                                 .foregroundStyle(HistoryPalette.missed.opacity(0.6)).cornerRadius(2)
                         }
                     }
+                    dayHover()
                 }
+                .hoverX($hover)
                 .chartYAxis { AxisMarks(values: [0, 6, 12, 18, 24]) { v in AxisGridLine(); AxisValueLabel { Text("\(v.as(Int.self) ?? 0) h") } } }
                 .chartYScale(domain: 0...24)
                 .frame(height: 170)
@@ -587,6 +708,19 @@ struct DayStrip: View {
 struct WeeksCard: View {
     let weeks: [History.Week]
     let style: ChartStyle
+    @State private var hover: Date?
+
+    /// The reading nearest the pointer: the weekly % on that day and which week it belongs to.
+    private func weekHover() -> some ChartContent {
+        let points = weeks.flatMap { w in w.trend.map { (week: w, ts: $0.0, value: $0.1) } }
+        let p = hover.flatMap { t in points.min { abs($0.ts.timeIntervalSince(t)) < abs($1.ts.timeIntervalSince(t)) } }
+        var lines: [(String, Color)] = []
+        if let p {
+            lines.append(("Weekly limit \(Int(p.value))% used", UsageStyle.color(for: p.value)))
+            lines.append(("Week of \(p.week.start.formatted(.dateTime.month(.abbreviated).day())), resets \(p.week.reset.formatted(.dateTime.weekday(.abbreviated).hour()))", .secondary))
+        }
+        return hoverMark(p?.ts, title: p?.ts.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day().hour().minute()) ?? "", lines: lines)
+    }
 
     var body: some View {
         Card("Weekly limit", subtitle: "How your weekly limit filled up, one line per week. Steeper means a heavier week.") {
@@ -608,7 +742,9 @@ struct WeeksCard: View {
                             }
                         }
                     }
+                    weekHover()
                 }
+                .hoverX($hover)
                 .chartYScale(domain: 0...100)
                 .chartYAxis { AxisMarks(values: [0, 50, 100]) { v in AxisGridLine(); AxisValueLabel { Text("\(v.as(Int.self) ?? 0)%") } } }
                 .chartLegend(position: .bottom, alignment: .leading)
