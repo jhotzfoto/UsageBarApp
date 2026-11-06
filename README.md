@@ -20,7 +20,8 @@ The dropdown shows:
 - **Top chats this session (est.)**, as in UsageBar 1.4.2: tracked vs logged vs token estimate, top 5,
   total, others, unattributed
 - a Claude incident banner when status.anthropic.com reports one
-- last updated, Refresh, **History**, claude.ai usage page, **About**, Settings…, Quit
+- last updated, Refresh, **History** (opens as a panel in the dropdown; "Open in window" for a
+  separate window), claude.ai usage page, **About**, Settings…, Quit
 
 **History window:** summary tiles (weekly limit, average session peak, left unused, idle per day), then
 cards: your day (session % line with session/idle/not-recorded shading, any day via the calendar),

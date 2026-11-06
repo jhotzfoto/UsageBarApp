@@ -2,6 +2,13 @@
 
 All changes to UsageBarApp, newest first, release-note style. Every change gets an entry.
 
+## 0.9.0 — 2026-11-06
+**New**
+- **History opens right from the menu bar.** Clicking History turns the dropdown into a large History
+  panel under the menu bar, no separate window. **Back** returns to the usual menu; **Open in
+  window** keeps it open as its own window. Clicking anywhere else closes it, and the menu opens on
+  the usual summary next time.
+
 ## 0.8.1 — 2026-11-06
 **New**
 - **Hover over any History chart for details.** A guide line follows the pointer with a small card:

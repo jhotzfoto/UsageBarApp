@@ -2,13 +2,44 @@ import SwiftUI
 import UsageCore
 
 /// The dropdown: limits (with pace), extra usage, planning, Anthropic's split by product, top chats
-/// (estimated), Claude status, and actions.
+/// (estimated), Claude status, and actions. History opens right here as a large panel under the
+/// menu bar (Back returns; "Open in window" keeps it open as its own window).
 struct MenuView: View {
     @EnvironmentObject var model: UsageModel
     @Environment(\.openSettings) private var openSettings
     @Environment(\.openWindow) private var openWindow
+    @State private var showHistory = false
 
     var body: some View {
+        Group {
+            if showHistory { historyPanel } else { summary }
+        }
+        .onDisappear { showHistory = false }   // the menu opens on the summary next time
+    }
+
+    private var historyPanel: some View {
+        let height = min(860, (NSScreen.main?.visibleFrame.height ?? 900) - 60)
+        return VStack(spacing: 0) {
+            HStack {
+                Button { showHistory = false } label: { Label("Back", systemImage: "chevron.left") }
+                Spacer()
+                Button {
+                    showHistory = false
+                    NSApp.activate(ignoringOtherApps: true)
+                    openWindow(id: "history")
+                } label: { Label("Open in window", systemImage: "macwindow") }
+            }
+            .buttonStyle(.borderless)
+            .font(.callout)
+            .padding(.horizontal, 16).padding(.vertical, 10)
+            Divider()
+            ScrollView { HistoryContent() }
+                .background(Color(nsColor: .windowBackgroundColor))
+        }
+        .frame(width: 940, height: height)
+    }
+
+    private var summary: some View {
         VStack(alignment: .leading, spacing: 10) {
             if let reason = model.staleReason {
                 VStack(alignment: .leading, spacing: 2) {
@@ -60,7 +91,7 @@ struct MenuView: View {
                     .disabled(model.isFetching)
             }
             HStack {
-                Button("History") { NSApp.activate(ignoringOtherApps: true); openWindow(id: "history") }
+                Button("History") { showHistory = true }
                 Button("claude.ai usage") { NSWorkspace.shared.open(URL(string: "https://claude.ai/settings/usage")!) }
                 Spacer()
                 Button("About") { NSApp.activate(ignoringOtherApps: true); openWindow(id: "about") }
