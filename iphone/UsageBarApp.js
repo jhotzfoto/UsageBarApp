@@ -7,6 +7,10 @@
 //      blocks the request, this route stops; nothing tries to get around it.
 //   2. The Mac app's shared reading in Scriptable's iCloud folder (UsageBarApp/snapshot.json).
 // Only percentages, reset times and amounts are read. The key goes only to claude.ai.
+//
+// Key lifetime tracker: every run (app or widget) records when the key was saved, when it last
+// worked and when it first failed (UsageBarApp/key-status.json: times only, never the key). The Mac
+// app shows the history and tells you when the key stops working.
 
 const GREEN = new Color('#34C759'), AMBER = new Color('#FF9F0A'), RED = new Color('#FF3B30');
 const DIM = new Color('#8E8E93');
@@ -15,8 +19,62 @@ const fm = FileManager.iCloud();
 const dir = fm.joinPath(fm.documentsDirectory(), 'UsageBarApp');
 const CACHE = fm.joinPath(dir, 'phone-reading.json');
 const MAC = fm.joinPath(dir, 'snapshot.json');
+const KEYSTATUS = fm.joinPath(dir, 'key-status.json');
 
 const KEY = 'claude_sessionKey', ORG = 'claude_org';
+let cookieExpires = null;   // expiry claude.ai states for the key, if a response says so
+
+// BEGIN trackKey (pure; tested on the Mac with node)
+// st: {current: {savedAt, lastOkAt, firstFailAt, expiresAt} | null, past: [...]}
+// ev: {type: 'saved'} | {type: 'ok', expiresAt} | {type: 'fail', reason}
+// Only 'badKey' (claude.ai refused the key) counts as the key dying; bot checks, network errors and
+// other HTTP errors say nothing about the key. A success after a failure clears the failure.
+function trackKey(st, ev, now) {
+  st = st && typeof st === 'object' ? st : {};
+  const out = {current: st.current || null, past: Array.isArray(st.past) ? st.past.slice() : []};
+  const t = now.toISOString();
+  if (ev.type === 'saved') {
+    if (out.current) out.past.unshift(Object.assign({}, out.current, {endedBy: out.current.firstFailAt ? 'expired' : 'replaced'}));
+    out.past = out.past.slice(0, 20);
+    out.current = {savedAt: t, lastOkAt: null, firstFailAt: null, expiresAt: null};
+  } else if (ev.type === 'ok') {
+    // A key saved by an older script version: start counting from its first success.
+    if (!out.current) out.current = {savedAt: null, lastOkAt: null, firstFailAt: null, expiresAt: null};
+    out.current.lastOkAt = t;
+    out.current.firstFailAt = null;
+    if (ev.expiresAt) out.current.expiresAt = ev.expiresAt;
+  } else if (ev.type === 'fail' && ev.reason === 'badKey' && out.current && !out.current.firstFailAt) {
+    out.current.firstFailAt = t;
+  }
+  out.updatedAt = t;
+  return out;
+}
+// END trackKey
+
+function recordKey(ev) {
+  try {
+    const path = KEYSTATUS;
+    let st = null;
+    try { if (fm.fileExists(path)) st = JSON.parse(fm.readString(path)); } catch (e) {}
+    fm.writeString(path, JSON.stringify(trackKey(st, ev, new Date()), null, 1));
+  } catch (e) {}
+}
+
+// The expiry date claude.ai puts on the sessionKey cookie, if this response re-sends it.
+// Reads only the date; the cookie's value is never looked at or kept.
+function noteExpiry(resp) {
+  try {
+    for (const c of (resp && resp.cookies) || []) {
+      if (c.name === 'sessionKey') {
+        const d = c.expiresDate || c.expires;
+        if (d) { cookieExpires = new Date(d).toISOString(); return; }
+      }
+    }
+    const h = resp && resp.headers ? (resp.headers['Set-Cookie'] || resp.headers['set-cookie'] || '') : '';
+    const m = /sessionKey=[^;]*;[^,]*?expires=([^;]+)/i.exec(String(h));
+    if (m) cookieExpires = new Date(m[1]).toISOString();
+  } catch (e) {}
+}
 
 function color(p) { return p >= 90 ? RED : (p >= 70 ? AMBER : GREEN); }
 function pct(l, now) { return l.resetsAt && new Date(l.resetsAt) <= now ? 0 : l.percent; }
@@ -52,6 +110,7 @@ async function get(path, key) {
   r.timeoutInterval = 15;
   const text = await r.loadString();
   const status = r.response ? r.response.statusCode : 0;
+  noteExpiry(r.response);
   const type = (r.response && r.response.headers && (r.response.headers['Content-Type'] || r.response.headers['content-type'])) || '';
   if (/html/i.test(type) || /^\s*</.test(text)) throw new Error('blocked');
   let j = null;
@@ -87,10 +146,15 @@ function readJSON(path) {
 async function getReading() {
   if (!fm.fileExists(dir)) fm.createDirectory(dir, true);
   let own = null, err = null;
+  try { await fm.downloadFileFromiCloud(KEYSTATUS); } catch (e) {}
   try {
     own = await readOwn();
     fm.writeString(CACHE, JSON.stringify(own));
-  } catch (e) { err = e.message; }
+    recordKey({type: 'ok', expiresAt: cookieExpires});
+  } catch (e) {
+    err = e.message;
+    if (err !== 'noKey') recordKey({type: 'fail', reason: err});
+  }
   // Newest of: fresh phone reading, cached phone reading, Mac snapshot.
   for (const p of [MAC, CACHE]) { try { await fm.downloadFileFromiCloud(p); } catch (e) {} }
   const candidates = [own, readJSON(CACHE), readJSON(MAC)].filter(r => r && r.limits && r.limits.length);
@@ -222,6 +286,8 @@ async function setKey() {
   }
   Keychain.set(KEY, v);
   if (Keychain.contains(ORG)) Keychain.remove(ORG);
+  if (!fm.fileExists(dir)) fm.createDirectory(dir, true);
+  recordKey({type: 'saved'});
   return true;
 }
 

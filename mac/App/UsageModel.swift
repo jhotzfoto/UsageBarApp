@@ -22,6 +22,9 @@ final class UsageModel: ObservableObject {
     @Published private(set) var status: ServiceStatus?
     /// When the iPhone copy (Scriptable's iCloud folder) was last written; nil if not this run.
     @Published private(set) var iphoneCopyAt: Date?
+    /// The iPhone's session-key lifetime record (written by the iPhone script).
+    @Published private(set) var phoneKey: PhoneKey.Status?
+    @Published var phoneKeyAlert: Bool { didSet { UserDefaults.standard.set(phoneKeyAlert, forKey: "phoneKeyAlert") } }
 
     @Published var refreshMinutes: Int { didSet { UserDefaults.standard.set(refreshMinutes, forKey: "refreshMinutes") } }
     @Published var menuBarIcon: Bool { didSet { UserDefaults.standard.set(menuBarIcon, forKey: "menuBarIcon") } }
@@ -55,6 +58,7 @@ final class UsageModel: ObservableObject {
         refreshMinutes = Self.refreshChoices.contains(saved) ? saved : 5
         chromeTracking = d.object(forKey: "chromeTracking") as? Bool ?? true
         menuBarIcon = d.bool(forKey: "menuBarIcon")
+        phoneKeyAlert = d.object(forKey: "phoneKeyAlert") as? Bool ?? true
         let tc = d.integer(forKey: "topChats")
         topChats = (1...25).contains(tc) ? tc : 5
         snapshot = SnapshotStore.load()
@@ -77,6 +81,28 @@ final class UsageModel: ObservableObject {
         writeStatusline()
         Task { await refresh(minGap: Self.minFetchGap) }
         Task { await checkStatus() }
+        loadPhoneKey()
+    }
+
+    /// Reads the iPhone's key record from iCloud (off the main thread) and alerts once when the key
+    /// stops working. This alert has its own switch: UsageBar has nothing like it, so no duplicates.
+    private func loadPhoneKey() {
+        let url = Self.iphoneMirror.appendingPathComponent("UsageBarApp/key-status.json")
+        DispatchQueue.global(qos: .utility).async {
+            try? FileManager.default.startDownloadingUbiquitousItem(at: url)
+            let s = (try? Data(contentsOf: url)).flatMap(PhoneKey.parse)
+            DispatchQueue.main.async {
+                self.phoneKey = s
+                let d = UserDefaults.standard
+                guard let id = PhoneKey.failureID(s), id != d.string(forKey: "phoneKeyAlerted") else { return }
+                d.set(id, forKey: "phoneKeyAlerted")
+                if self.phoneKeyAlert, let c = s?.current {
+                    self.alerts.notify("iPhone session key stopped working",
+                                       "It " + PhoneKey.lifetimeText(c, now: Date()) + ". Paste a new key in Scriptable > Claude Usage.",
+                                       force: true)
+                }
+            }
+        }
     }
 
     var staleAfter: TimeInterval { max(600, Double(refreshMinutes) * 60 + 300) }
@@ -89,6 +115,7 @@ final class UsageModel: ObservableObject {
         writeStatusline()
         Task { await refresh(minGap: max(Self.minFetchGap, Double(refreshMinutes) * 60 - 30)) }
         if now.timeIntervalSince(lastStatusCheck) >= 5 * 60 { Task { await checkStatus() } }
+        loadPhoneKey()
     }
 
     /// Fetches if the reading is at least `minGap` seconds old, we're not backing off (429 or repeated

@@ -2,6 +2,18 @@
 
 All changes to UsageBarApp, newest first, release-note style. Every change gets an entry.
 
+## 0.4.0 — 2026-11-05
+**New**
+- **iPhone session key tracker.** The iPhone script now records when you saved the key, when it last
+  worked and when it first stopped working (times only, never the key), on every run and widget
+  refresh. Settings > iPhone session key shows how long each key has lasted, plus the expiry date
+  claude.ai gives, when it sends one. Over time this tells you how long a claude.ai sign-in really lasts.
+- **"iPhone session key stopped working" notification** on the Mac, once per key, with how long it
+  lasted. Its own switch, on by default, and it works even while the other alerts are off.
+
+**Changed**
+- Update the iPhone script (Scriptable > Claude Usage) to this version to start tracking.
+
 ## 0.3.0 — 2026-11-05
 **New**
 - **About window** (menu > About, or Settings > General): version, privacy policy, terms,

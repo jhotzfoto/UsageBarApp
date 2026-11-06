@@ -44,6 +44,9 @@ estimated top chats this week and per window. History starts 2026-11-01 (importe
 - **Settings:**
   - check interval, chat tracking, number of top chats, menu bar icon, open at login, when the
     iPhone copy was last written
+  - **iPhone session key**: how long each pasted key has lasted (from the iPhone's record in
+    Scriptable's iCloud folder, `UsageBarApp/key-status.json`, times only) and a notification when it
+    stops working
   - **Alerts** (off by default while UsageBar runs), each with its own toggle and editable thresholds:
     - session 80/95%
     - weekly 75/90%

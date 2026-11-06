@@ -42,6 +42,16 @@ struct SettingsView: View {
                 Text("Your iPhone widget falls back to this copy when it can't read claude.ai itself.")
                     .font(.caption).foregroundStyle(.secondary)
             }
+            Section("iPhone session key") {
+                if let k = model.phoneKey {
+                    ForEach(PhoneKey.summary(k, now: model.now), id: \.self) { Text($0).font(.callout) }
+                } else {
+                    Text("No record yet. It appears after the iPhone script runs with a session key.").font(.callout)
+                }
+                Toggle("Notify me when it stops working", isOn: $model.phoneKeyAlert)
+                Text("The iPhone checks about every 15 minutes and records only times, never the key, so after a key or two you'll know how long claude.ai keeps a sign-in.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
             Section("General") {
                 Toggle("Show icon in the menu bar", isOn: $model.menuBarIcon)
                 Toggle("Open at login", isOn: $launchAtLogin)

@@ -318,4 +318,29 @@ final class UsageCoreTests: XCTestCase {
         XCTAssertTrue(Statusline.text(s, sessionPace: nil, staleAfter: 600, now: t0.addingTimeInterval(700), color: false).contains("(as of"))
         XCTAssertEqual(Statusline.text(nil, sessionPace: nil, staleAfter: 600), "Claude usage: no reading yet")
     }
+
+    func testPhoneKeyLifetimeAndFailureID() {
+        func h(_ n: Double) -> String { iso(t0.addingTimeInterval(n * 3600)) }
+        let json = """
+        {"current":{"savedAt":"\(h(0))","lastOkAt":"\(h(30))","firstFailAt":null,"expiresAt":"\(h(720))"},
+         "past":[{"savedAt":"\(h(-600))","lastOkAt":"\(h(-48))","firstFailAt":"\(h(-47.5))","endedBy":"expired"},
+                 {"savedAt":null,"lastOkAt":"\(h(-700))","endedBy":"replaced"}],
+         "updatedAt":"\(h(30))"}
+        """
+        var s = PhoneKey.parse(Data(json.utf8))!
+        XCTAssertEqual(PhoneKey.lifetimeText(s.current!, now: t0), "working for 30 h so far")
+        XCTAssertEqual(PhoneKey.lifetimeText(s.past[0], now: t0), "lasted about 23 days")
+        XCTAssertEqual(PhoneKey.lifetimeText(PhoneKey.Key(savedAt: t0, lastOkAt: t0.addingTimeInterval(40 * 3600),
+                                                           firstFailAt: t0.addingTimeInterval(50 * 3600)), now: t0),
+                       "lasted between 40 h and 2 days")
+        XCTAssertNil(PhoneKey.failureID(s))
+        let lines = PhoneKey.summary(s, now: t0)
+        XCTAssertEqual(lines.count, 3, "current, expiry, earlier keys (untracked one left out)")
+        s.current!.firstFailAt = t0.addingTimeInterval(31 * 3600)
+        XCTAssertNotNil(PhoneKey.failureID(s))
+        XCTAssertTrue(PhoneKey.summary(s, now: t0)[0].hasPrefix("Session key stopped working"))
+        XCTAssertEqual(PhoneKey.lifetimeText(PhoneKey.Key(savedAt: t0, lastOkAt: t0.addingTimeInterval(7200), endedBy: "replaced"), now: t0),
+                       "replaced while still working, after 2 h")
+        XCTAssertNil(PhoneKey.parse(Data("nope".utf8)))
+    }
 }
