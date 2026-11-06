@@ -382,6 +382,8 @@ final class UsageCoreTests: XCTestCase {
         XCTAssertEqual(ph.today.used, 60)
         XCTAssertEqual(ph.today.windows, 1)
         XCTAssertEqual(ph.resets.first?.unused, 40)
+        XCTAssertEqual(ph.line.map(\.p).max(), 60)
+        XCTAssertEqual(ph.line.first?.m, 336)   // 5.6 h after midnight
         XCTAssertEqual(ph.days.first?.noDataHours ?? 0, 24, accuracy: 0.01, "a day with no readings is all not recorded")
         let back = try? SnapshotStore.decoder.decode(PhoneHistory.self, from: SnapshotStore.encoder.encode(ph))
         XCTAssertEqual(back?.slots, ph.slots)

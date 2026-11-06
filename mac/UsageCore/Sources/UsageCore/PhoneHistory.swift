@@ -8,6 +8,12 @@ public struct PhoneHistory: Codable, Equatable {
         public let used: Double
         public let state: String      // active, idle, noData, future
     }
+    /// A point on today's session % line: minutes since midnight, %, and segment (breaks at gaps).
+    public struct Point: Codable, Equatable {
+        public let m: Double
+        public let p: Double
+        public let s: Int
+    }
     public struct Reset: Codable, Equatable {
         public let at: Date
         public let unused: Double
@@ -25,6 +31,7 @@ public struct PhoneHistory: Codable, Equatable {
     public let day: Date
     public let slotMinutes: Int
     public let slots: [Slot]
+    public let line: [Point]
     public let resets: [Reset]
     public let today: Day
     public let days: [Day]            // oldest first, today last
@@ -49,9 +56,11 @@ public struct PhoneHistory: Codable, Equatable {
         days.append(summary(today))
         let resets = today.windows.filter { $0.done && $0.reset > today.day && $0.reset <= today.day.addingTimeInterval(86400) }
             .map { Reset(at: $0.reset, unused: $0.unused ?? 0) }
+        let line = History.sessionLine(day: start, readings: recent, now: now, calendar: calendar)
+            .map { Point(m: ($0.ts.timeIntervalSince(start) / 60).rounded(), p: $0.percent, s: $0.segment) }
         return PhoneHistory(generatedAt: now, day: start, slotMinutes: 30,
                             slots: today.slots.map { Slot(used: ($0.used * 10).rounded() / 10, state: $0.state.rawValue) },
-                            resets: resets, today: summary(today), days: days)
+                            line: line, resets: resets, today: summary(today), days: days)
     }
 
     public func save(to url: URL) throws {

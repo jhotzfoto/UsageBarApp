@@ -2,6 +2,24 @@
 
 All changes to UsageBarApp, newest first, release-note style. Every change gets an entry.
 
+## 0.8.0 — 2026-11-06 (History redesign)
+**New**
+- **Redesigned History window.** Four summary tiles at the top answer "how am I doing?" first: weekly
+  limit used, average session peak, capacity left unused per session, and idle hours per day. Below,
+  each chart sits in its own card with a plain-English title and a one-line "what to look for".
+- **Line charts everywhere**, with one switch (top right) to turn every chart back into bars. Your
+  choice is remembered.
+- **Days as a visual list**: each day gets a 24-hour strip (blue = usage, green = session running,
+  amber = idle, grey = not recorded) next to sessions, an average-peak bar, idle hours and weekly %.
+- One colour language throughout: blue = your usage, green = session running, amber = missed
+  capacity, grey = not recorded.
+- **iPhone Claude History widget uses lines too**; type `bars` in the widget's Parameter field to
+  switch back.
+
+**Changed**
+- Top chats leaves out "no tracked activity" (now a footnote) and shows a bar per chat.
+- Chats by session shows the latest 8, with "Show all".
+
 ## 0.7.2 — 2026-11-06
 **Changed**
 - **Day timeline is now a line graph** of your session % through the day: it climbs as you use

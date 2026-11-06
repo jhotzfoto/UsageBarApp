@@ -7,7 +7,15 @@ import UsageCore
 struct UsageBarAppMain: App {
     @StateObject private var model = UsageModel()
 
-    init() { MenuBarPosition.restore() }   // before the menu bar item is created
+    init() {
+        let args = CommandLine.arguments
+        if let i = args.firstIndex(of: "--render-history"), i + 1 < args.count {
+            RenderHistory.active = true
+            RenderHistory.run(path: args[i + 1], style: args.contains("--bars") ? .bars : (args.contains("--line") ? .line : nil))
+            return
+        }
+        MenuBarPosition.restore()   // before the menu bar item is created
+    }
 
     var body: some Scene {
         MenuBarExtra {
@@ -45,7 +53,7 @@ struct MenuBarLabel: View {
 
     var body: some View {
         Image(nsImage: render())
-            .onAppear { model.start() }
+            .onAppear { if !RenderHistory.active { model.start() } }
     }
 
     private func render() -> NSImage {

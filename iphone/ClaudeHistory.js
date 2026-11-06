@@ -4,6 +4,8 @@
 //
 // Data: the Mac app's history (UsageBarApp/history.json in Scriptable's iCloud folder), written
 // every 10 minutes while the Mac is awake. Usage numbers and times only.
+//
+// Charts are lines by default. Type "bars" in the widget's Parameter field for bar charts.
 
 const fm = FileManager.iCloud();
 const dir = fm.joinPath(fm.documentsDirectory(), 'UsageBarApp');
@@ -38,21 +40,47 @@ function ageText(h) {
   return 'Mac · ' + (min < 1 ? 'now' : min < 120 ? min + 'm ago' : Math.round(min / 60) + 'h ago');
 }
 
-// Today: one column per half hour, shaded by state, with a blue bar for session % used.
+const BARS = String(args.widgetParameter || '').trim().toLowerCase() === 'bars';
+
+// Polylines through [x, y] points; a new segment starts a new line.
+function strokeSegments(ctx, segments, color, width) {
+  for (const pts of segments) {
+    if (pts.length < 2) continue;
+    const p = new Path();
+    p.move(new Point(pts[0][0], pts[0][1]));
+    for (const q of pts.slice(1)) p.addLine(new Point(q[0], q[1]));
+    ctx.addPath(p); ctx.setStrokeColor(color); ctx.setLineWidth(width); ctx.strokePath();
+  }
+}
+
+function dot(ctx, x, y, r, color) { ctx.setFillColor(color); ctx.fillEllipse(new Rect(x - r, y - r, r * 2, r * 2)); }
+
+// Today: half-hour shading by state, with the session % as a line (0–100%) or, with "bars",
+// a blue bar per half hour for the session % used in it.
 function timelineImage(h, width, height) {
   const ctx = new DrawContext();
   ctx.size = new Size(width, height); ctx.opaque = false; ctx.respectScreenScale = true;
   const n = h.slots.length, sw = width / n, chartH = height - 11;
-  const top = Math.max(10, Math.max(...h.slots.map(s => s.used)) * 1.15);
+  const useLine = !BARS && Array.isArray(h.line);
+  const top = useLine ? 100 : Math.max(10, Math.max(...h.slots.map(s => s.used)) * 1.15);
   h.slots.forEach((s, i) => {
     ctx.setFillColor(SHADE[s.state] || SHADE.noData);
     ctx.fillRect(new Rect(i * sw, 0, sw + 0.5, chartH));
-    if (s.used > 0) {
+    if (!useLine && s.used > 0) {
       const bh = Math.max(1.5, s.used / top * chartH);
       ctx.setFillColor(BLUE);
       ctx.fillRect(new Rect(i * sw + 0.5, chartH - bh, Math.max(1, sw - 1), bh));
     }
   });
+  if (useLine) {
+    ctx.setFillColor(new Color('#8E8E93', 0.25));
+    ctx.fillRect(new Rect(0, chartH / 2, width, 0.5));   // 50% guide
+    const segs = {};
+    for (const p of h.line) (segs[p.s] = segs[p.s] || []).push([p.m / 1440 * width, chartH - p.p / 100 * chartH]);
+    strokeSegments(ctx, Object.values(segs), BLUE, 2);
+    const last = h.line[h.line.length - 1];
+    if (last && isToday(h.day)) dot(ctx, last.m / 1440 * width, chartH - last.p / 100 * chartH, 2.5, BLUE);
+  }
   const x = t => (new Date(t) - new Date(h.day)) / 86400000 * width;
   for (const r of h.resets || []) { ctx.setFillColor(r.unused >= 20 ? AMBER : DIM); ctx.fillRect(new Rect(x(r.at) - 0.5, 0, 1, chartH)); }
   if (isToday(h.day)) { ctx.setFillColor(RED); ctx.fillRect(new Rect(x(Date.now()) - 0.5, 0, 1, chartH)); }
@@ -67,17 +95,25 @@ function daysImage(h, width, height) {
   ctx.size = new Size(width, height); ctx.opaque = false; ctx.respectScreenScale = true;
   const n = h.days.length, cw = width / n, chartH = height - 11, bw = (cw - 8) / 2;
   const maxUsed = Math.max(100, ...h.days.map(d => d.used));
+  const usedY = d => chartH - d.used / maxUsed * chartH;
+  const idleY = d => chartH - Math.min(24, d.idleHours) / 24 * chartH;
   h.days.forEach((d, i) => {
     const x0 = i * cw + 3;
     ctx.setFillColor(new Color('#8E8E93', 0.10));
     ctx.fillRect(new Rect(x0, 0, cw - 6, chartH));
-    const uh = d.used / maxUsed * chartH;
-    ctx.setFillColor(BLUE); ctx.fillRect(new Rect(x0, chartH - uh, bw, uh));
-    const ih = Math.min(24, d.idleHours) / 24 * chartH;
-    ctx.setFillColor(AMBER); ctx.fillRect(new Rect(x0 + bw + 2, chartH - ih, bw, ih));
+    if (BARS) {
+      ctx.setFillColor(BLUE); ctx.fillRect(new Rect(x0, usedY(d), bw, chartH - usedY(d)));
+      ctx.setFillColor(AMBER); ctx.fillRect(new Rect(x0 + bw + 2, idleY(d), bw, chartH - idleY(d)));
+    }
     ctx.setFont(Font.systemFont(8)); ctx.setTextColor(i === n - 1 ? GREEN : DIM);
     ctx.drawText(new Date(d.date).toLocaleDateString(undefined, {weekday: 'short'}).slice(0, 3), new Point(x0, chartH + 1));
   });
+  if (!BARS) {
+    const cx = i => i * cw + cw / 2;
+    strokeSegments(ctx, [h.days.map((d, i) => [cx(i), idleY(d)])], AMBER, 2);
+    strokeSegments(ctx, [h.days.map((d, i) => [cx(i), usedY(d)])], BLUE, 2);
+    h.days.forEach((d, i) => { dot(ctx, cx(i), idleY(d), 2.5, AMBER); dot(ctx, cx(i), usedY(d), 2.5, BLUE); });
+  }
   return ctx.getImage();
 }
 
@@ -139,7 +175,7 @@ function build(family, h) {
   const th = family === 'large' ? 96 : 70;
   const img = w.addImage(timelineImage(h, 310, th)); img.imageSize = new Size(310, th);
   w.addSpacer(3);
-  legend(w, [['used', BLUE], ['session', GREEN], ['idle', AMBER], ['no data', DIM]]);
+  legend(w, [[BARS ? 'used' : 'session %', BLUE], ['session', GREEN], ['idle', AMBER], ['no data', DIM]]);
 
   if (family === 'large') {
     w.addSpacer(10);

@@ -22,8 +22,11 @@ The dropdown shows:
 - a Claude incident banner when status.anthropic.com reports one
 - last updated, Refresh, **History**, claude.ai usage page, **About**, Settings…, Quit
 
-**History window:** day timeline (30-min or hourly usage, idle and missed capacity), 5-hour windows (peak and unused), days (idle and active hours), weekly trend,
-estimated top chats this week and per window. History starts 2026-11-01 (imported from UsageBar).
+**History window:** summary tiles (weekly limit, average session peak, left unused, idle per day), then
+cards: your day (session % line with session/idle/not-recorded shading, any day via the calendar),
+5-hour sessions (peak and unused), days (running vs idle hours plus an hour-by-hour strip per day),
+weekly limit, and estimated top chats. One switch at the top turns every chart into lines or bars.
+History starts 2026-11-01 (imported from UsageBar).
 
 **Chat tracking:**
 - Reads your open claude.ai tab in Chrome: titles, message times and token estimates only.
@@ -94,7 +97,8 @@ old it is.
 **Claude History** (separate widget, `iphone/ClaudeHistory.js`, in Scriptable as **Claude History**):
 today in half-hour slots (used, session running, idle, not recorded) and the last 7 days (used and idle
 hours). Large shows both, medium today, small today's numbers; Lock Screen a summary. It draws the Mac's
-history (`UsageBarApp/history.json`, written every 10 minutes while the Mac is awake).
+history (`UsageBarApp/history.json`, written every 10 minutes while the Mac is awake). Charts are lines;
+type `bars` in the widget's Parameter field (Edit Widget) for bar charts.
 
 ## Folders
 | Path | What |
