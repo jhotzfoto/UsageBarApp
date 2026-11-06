@@ -2,6 +2,13 @@
 
 All changes to UsageBarApp, newest first, release-note style. Every change gets an entry.
 
+## 0.7.2 — 2026-11-06
+**Changed**
+- **Day timeline is now a line graph** of your session % through the day: it climbs as you use
+  Claude and drops to 0 at each reset, with today's current % marked. The shading behind it (session
+  running, idle, not recorded) and the reset labels stay. The line breaks where the Mac wasn't
+  recording instead of drawing across the gap. The 30 min / 1 hour switch is gone (no longer needed).
+
 ## 0.7.1 — 2026-11-06
 **New**
 - **Pick any day in the Day timeline.** Click the date in History > Day timeline to open a calendar

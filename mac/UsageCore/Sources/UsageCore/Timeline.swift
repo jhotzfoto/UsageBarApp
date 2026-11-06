@@ -73,4 +73,37 @@ extension History {
         return DayTimeline(day: start, slots: slots, windows: wins, used: slots.reduce(0) { $0 + $1.used },
                            unusedAtReset: unused, idleHours: idle / 3600, noDataHours: noData / 3600)
     }
+
+    public struct LinePoint: Identifiable, Hashable {
+        public var id: String { "\(segment)-\(ts.timeIntervalSince1970)-\(percent)" }
+        public let ts: Date
+        public let percent: Double
+        public let segment: Int   // a new segment starts after a recording gap, so the line isn't drawn across it
+    }
+
+    /// The session % through the day as recorded: it rises with use and drops to 0 at each reset
+    /// (a vertical step at the reset time). Gaps longer than `gap` (Mac asleep) break the line.
+    public static func sessionLine(day: Date, readings: [Reading], now: Date = Date(), calendar: Calendar = .current,
+                                   gap: TimeInterval = 20 * 60) -> [LinePoint] {
+        let start = calendar.startOfDay(for: day)
+        let end = calendar.date(byAdding: .day, value: 1, to: start)!
+        let rs = readings.filter { $0.key == "session" && $0.ts >= start && $0.ts < end && $0.ts <= now }.sorted { $0.ts < $1.ts }
+        func value(_ r: Reading) -> Double { (r.resetsAt.map { $0 > r.ts } ?? false) ? r.percent : 0 }
+        var out: [LinePoint] = []
+        var seg = 0
+        var prev: Reading?
+        for r in rs {
+            if let p = prev {
+                if r.ts.timeIntervalSince(p.ts) > gap {
+                    seg += 1
+                } else if let reset = p.resetsAt, reset > p.ts, reset <= r.ts, value(p) > 0 {
+                    out.append(LinePoint(ts: reset, percent: value(p), segment: seg))
+                    out.append(LinePoint(ts: reset, percent: 0, segment: seg))
+                }
+            }
+            out.append(LinePoint(ts: r.ts, percent: value(r), segment: seg))
+            prev = r
+        }
+        return out
+    }
 }

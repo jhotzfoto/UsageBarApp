@@ -387,4 +387,29 @@ final class UsageCoreTests: XCTestCase {
         XCTAssertEqual(back?.slots, ph.slots)
         XCTAssertEqual(back?.days.count, 7)
     }
+
+    func testSessionLineStepsAtResetAndBreaksAtGaps() {
+        var cal = Calendar(identifier: .gregorian); cal.timeZone = TimeZone(identifier: "UTC")!
+        let day = cal.startOfDay(for: t0)
+        func at(_ h: Double) -> Date { day.addingTimeInterval(h * 3600) }
+        let reset = at(10)
+        var rs: [Reading] = []
+        // Every 10 min 4:00–12:00: no session before 5:30, rising to 60% until the 10:00 reset, then none.
+        var h = 4.0
+        while h < 12 {
+            let inWindow = h >= 5.5 && h < 10
+            rs.append(Reading(ts: at(h), key: "session", label: "S", percent: inWindow ? min(60, (h - 5.5) * 15) : (h >= 10 ? 60 : 0),
+                              resetsAt: inWindow || h >= 10 ? reset : nil))
+            h += 1.0 / 6
+        }
+        // Back after a sleep at 15:00.
+        rs.append(Reading(ts: at(15), key: "session", label: "S", percent: 0, resetsAt: nil))
+        let line = History.sessionLine(day: day, readings: rs, now: at(20), calendar: cal)
+        XCTAssertEqual(line.first?.percent, 0)
+        let drop = line.filter { $0.ts == reset }
+        XCTAssertEqual(Array(drop.map(\.percent).prefix(2)), [60, 0], "vertical step down at the reset")
+        XCTAssertTrue(line.filter { $0.ts > reset && $0.ts < at(12) }.allSatisfy { $0.percent == 0 }, "stale % after reset reads 0")
+        XCTAssertEqual(Set(line.map(\.segment)).count, 2, "the 12:00–15:00 gap breaks the line")
+        XCTAssertEqual(line.last?.segment, 1)
+    }
 }

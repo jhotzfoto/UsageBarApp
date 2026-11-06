@@ -130,20 +130,20 @@ struct HistoryView: View {
     }
 }
 
-/// One day, half-hour (or hour) slots: session % used per slot over shading for when a session was
-/// running, idle (missed capacity) and not recorded, with what was left unused at each reset.
+/// One day: a line of the session % (rising with use, dropping at each reset) over half-hour shading
+/// for when a session was running, idle (missed capacity) and not recorded, with what was left
+/// unused at each reset.
 struct DayTimelineSection: View {
     @EnvironmentObject var model: UsageModel
     @State private var dayOffset = 0
-    @State private var slotMinutes = 30
     @State private var picking = false
 
     var body: some View {
         let cal = Calendar.current
         let now = model.now
         let day = cal.date(byAdding: .day, value: -dayOffset, to: cal.startOfDay(for: now))!
-        let tl = History.timeline(day: day, slotMinutes: slotMinutes, readings: model.readings, windows: model.windows, now: now)
-        let top = max(10, (tl.slots.map(\.used).max() ?? 0) * 1.15)
+        let tl = History.timeline(day: day, slotMinutes: 30, readings: model.readings, windows: model.windows, now: now)
+        let line = History.sessionLine(day: day, readings: model.readings, now: now)
         let first = History.historyStart(readings: model.readings, daily: model.daily).map { cal.startOfDay(for: $0) }
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
@@ -170,19 +170,22 @@ struct DayTimelineSection: View {
                 Button { dayOffset -= 1 } label: { Image(systemName: "chevron.right") }
                     .disabled(dayOffset == 0)
                 if dayOffset != 0 { Button("Today") { dayOffset = 0 } }
-                Picker("", selection: $slotMinutes) { Text("30 min").tag(30); Text("1 hour").tag(60) }
-                    .pickerStyle(.segmented).labelsHidden().frame(width: 140)
             }
             Chart {
                 ForEach(tl.slots.filter { $0.state != .future }) { s in
                     RectangleMark(xStart: .value("From", s.start), xEnd: .value("To", s.end),
-                                  yStart: .value("Base", 0), yEnd: .value("Top", top))
+                                  yStart: .value("Base", 0), yEnd: .value("Top", 100))
                         .foregroundStyle(Self.shade(s.state))
                 }
-                ForEach(tl.slots.filter { $0.used > 0 }) { s in
-                    RectangleMark(xStart: .value("From", s.start.addingTimeInterval(60)), xEnd: .value("To", s.end.addingTimeInterval(-60)),
-                                  yStart: .value("Base", 0), yEnd: .value("Used", s.used))
+                ForEach(line) { p in
+                    LineMark(x: .value("Time", p.ts), y: .value("Session %", p.percent), series: .value("Segment", p.segment))
                         .foregroundStyle(Color.accentColor)
+                        .lineStyle(StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
+                }
+                if dayOffset == 0, let last = line.last {
+                    PointMark(x: .value("Time", last.ts), y: .value("Session %", last.percent))
+                        .foregroundStyle(Color.accentColor).symbolSize(30)
+                        .annotation(position: .top, spacing: 4) { Text("\(Int(last.percent))%").font(.caption2.bold()) }
                 }
                 ForEach(tl.windows.filter { $0.done && $0.reset > tl.day && $0.reset <= tl.day.addingTimeInterval(86400) }) { w in
                     RuleMark(x: .value("Reset", w.reset))
@@ -203,11 +206,11 @@ struct DayTimelineSection: View {
                     AxisGridLine(); AxisValueLabel(format: .dateTime.hour())
                 }
             }
-            .chartYScale(domain: 0...top)
-            .chartYAxis { AxisMarks { v in AxisGridLine(); AxisValueLabel { Text("\(v.as(Double.self).map { Int($0) } ?? 0)%") } } }
+            .chartYScale(domain: 0...100)
+            .chartYAxis { AxisMarks(values: [0, 25, 50, 75, 100]) { v in AxisGridLine(); AxisValueLabel { Text("\(v.as(Int.self) ?? 0)%") } } }
             .padding(.top, 14)
-            .frame(height: 210)
-            Legend(items: [("Session % used in the slot", Color.accentColor), ("Session running", Self.shade(.active)),
+            .frame(height: 220)
+            Legend(items: [("Session %", Color.accentColor), ("Session running", Self.shade(.active)),
                            ("Idle, no session (missed capacity)", Self.shade(.idle)), ("Not recorded (Mac asleep)", Self.shade(.noData))])
             Text(summary(tl, today: dayOffset == 0)).font(.callout)
         }
