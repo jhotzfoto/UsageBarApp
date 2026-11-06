@@ -343,4 +343,35 @@ final class UsageCoreTests: XCTestCase {
                        "replaced while still working, after 2 h")
         XCTAssertNil(PhoneKey.parse(Data("nope".utf8)))
     }
+
+    func testDayTimelineSlotsUsageIdleAndUnused() {
+        var cal = Calendar(identifier: .gregorian); cal.timeZone = TimeZone(identifier: "UTC")!
+        let day = cal.startOfDay(for: t0)
+        func at(_ h: Double) -> Date { day.addingTimeInterval(h * 3600) }
+        let reset = at(10)
+        var rs: [Reading] = []
+        // Mac awake 0:00–12:00 (weekly readings every 30 min), asleep after.
+        for i in 0..<24 { rs.append(Reading(ts: at(Double(i) * 0.5 + 0.1), key: "weekly_all", label: "W", percent: 50, resetsAt: nil)) }
+        for (h, p) in [(5.6, 10.0), (6.2, 30.0), (7.0, 30.0), (9.8, 60.0)] {
+            rs.append(Reading(ts: at(h), key: "session", label: "S", percent: p, resetsAt: reset))
+        }
+        let now = at(20)
+        let wins = History.windows(readings: rs, daily: [], now: now)
+        let tl = History.timeline(day: day, slotMinutes: 30, readings: rs, windows: wins, now: now, calendar: cal)
+        XCTAssertEqual(tl.slots.count, 48)
+        XCTAssertEqual(tl.slots[11].used, 10)   // 5:30 slot
+        XCTAssertEqual(tl.slots[12].used, 20)   // 6:00 slot
+        XCTAssertEqual(tl.slots[19].used, 30)   // 9:30 slot
+        XCTAssertEqual(tl.used, 60)
+        XCTAssertEqual(tl.unusedAtReset, 40)
+        XCTAssertEqual(tl.slots[2].state, .idle)
+        XCTAssertEqual(tl.slots[12].state, .active)
+        XCTAssertEqual(tl.slots[30].state, .noData)
+        XCTAssertEqual(tl.slots[44].state, .future)
+        XCTAssertEqual(tl.idleHours, 7, accuracy: 0.01)     // 0–5 and 10–12
+        XCTAssertEqual(tl.noDataHours, 8, accuracy: 0.01)   // 12–20
+        let hourly = History.timeline(day: day, slotMinutes: 60, readings: rs, windows: wins, now: now, calendar: cal)
+        XCTAssertEqual(hourly.slots.count, 24)
+        XCTAssertEqual(hourly.slots[6].used, 20)
+    }
 }

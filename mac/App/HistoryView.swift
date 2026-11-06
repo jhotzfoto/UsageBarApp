@@ -31,6 +31,8 @@ struct HistoryView: View {
                     .pickerStyle(.segmented).frame(width: 220)
                 }
 
+                DayTimelineSection()
+
                 section("5-hour windows: peak and unused at reset") {
                     if wins.isEmpty { empty } else {
                         Chart(wins) { w in
@@ -38,12 +40,13 @@ struct HistoryView: View {
                                 .foregroundStyle(UsageStyle.color(for: w.peak))
                             if let u = w.unused {
                                 BarMark(x: .value("Reset", w.reset), y: .value("Unused", u))
-                                    .foregroundStyle(Color.secondary.opacity(0.25))
+                                    .foregroundStyle(UsageStyle.amber.opacity(0.35))
                             }
                         }
                         .chartYScale(domain: 0...100)
                         .chartYAxis { AxisMarks(values: [0, 50, 100]) { v in AxisGridLine(); AxisValueLabel { Text("\(v.as(Int.self) ?? 0)%") } } }
                         .frame(height: 160)
+                        Legend(items: [("Peak used", UsageStyle.green), ("Unused at reset (missed)", UsageStyle.amber.opacity(0.35))])
                         let done = wins.filter(\.done)
                         if !done.isEmpty {
                             Text(String(format: "%d windows · average peak %.0f%% · average unused %.0f%%", done.count,
@@ -57,12 +60,13 @@ struct HistoryView: View {
                 section("Days: idle hours (no active session)") {
                     if days.isEmpty { empty } else {
                         Chart(days) { d in
-                            BarMark(x: .value("Day", d.date, unit: .day), y: .value("Idle h", d.idleHours))
-                                .foregroundStyle(Color.secondary.opacity(0.5))
                             BarMark(x: .value("Day", d.date, unit: .day), y: .value("Active h", max(0, d.trackedHours - d.idleHours)))
                                 .foregroundStyle(UsageStyle.green)
+                            BarMark(x: .value("Day", d.date, unit: .day), y: .value("Idle h", d.idleHours))
+                                .foregroundStyle(UsageStyle.amber.opacity(0.55))
                         }
                         .frame(height: 140)
+                        Legend(items: [("Session running (h)", UsageStyle.green), ("Idle, no session: missed capacity (h)", UsageStyle.amber.opacity(0.55))])
                         Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 4) {
                             GridRow { head("Day"); head("Windows"); head("Avg peak"); head("Idle"); head("Weekly at end") }
                             ForEach(days.reversed()) { d in
@@ -122,6 +126,107 @@ struct HistoryView: View {
         VStack(alignment: .leading, spacing: 8) {
             Text(title).font(.headline)
             content()
+        }
+    }
+}
+
+/// One day, half-hour (or hour) slots: session % used per slot over shading for when a session was
+/// running, idle (missed capacity) and not recorded, with what was left unused at each reset.
+struct DayTimelineSection: View {
+    @EnvironmentObject var model: UsageModel
+    @State private var dayOffset = 0
+    @State private var slotMinutes = 30
+
+    var body: some View {
+        let cal = Calendar.current
+        let now = model.now
+        let day = cal.date(byAdding: .day, value: -dayOffset, to: cal.startOfDay(for: now))!
+        let tl = History.timeline(day: day, slotMinutes: slotMinutes, readings: model.readings, windows: model.windows, now: now)
+        let top = max(10, (tl.slots.map(\.used).max() ?? 0) * 1.15)
+        let first = History.historyStart(readings: model.readings, daily: model.daily).map { cal.startOfDay(for: $0) }
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Text("Day timeline").font(.headline)
+                Spacer()
+                Button { dayOffset += 1 } label: { Image(systemName: "chevron.left") }
+                    .disabled(first.map { day <= $0 } ?? true)
+                Text(dayOffset == 0 ? "Today" : day.formatted(.dateTime.weekday(.wide).month(.abbreviated).day()))
+                    .monospacedDigit().frame(minWidth: 120)
+                Button { dayOffset -= 1 } label: { Image(systemName: "chevron.right") }
+                    .disabled(dayOffset == 0)
+                Picker("", selection: $slotMinutes) { Text("30 min").tag(30); Text("1 hour").tag(60) }
+                    .pickerStyle(.segmented).labelsHidden().frame(width: 140)
+            }
+            Chart {
+                ForEach(tl.slots.filter { $0.state != .future }) { s in
+                    RectangleMark(xStart: .value("From", s.start), xEnd: .value("To", s.end),
+                                  yStart: .value("Base", 0), yEnd: .value("Top", top))
+                        .foregroundStyle(Self.shade(s.state))
+                }
+                ForEach(tl.slots.filter { $0.used > 0 }) { s in
+                    RectangleMark(xStart: .value("From", s.start.addingTimeInterval(60)), xEnd: .value("To", s.end.addingTimeInterval(-60)),
+                                  yStart: .value("Base", 0), yEnd: .value("Used", s.used))
+                        .foregroundStyle(Color.accentColor)
+                }
+                ForEach(tl.windows.filter { $0.done && $0.reset > tl.day && $0.reset <= tl.day.addingTimeInterval(86400) }) { w in
+                    RuleMark(x: .value("Reset", w.reset))
+                        .foregroundStyle(Color.secondary.opacity(0.6))
+                        .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
+                        .annotation(position: .top, spacing: 2, overflowResolution: .init(x: .fit(to: .chart), y: .disabled)) {
+                            Text("reset · \(Int(w.unused ?? 0))% unused").font(.caption2)
+                                .foregroundStyle((w.unused ?? 0) >= 20 ? UsageStyle.amber : .secondary)
+                        }
+                }
+                if dayOffset == 0 {
+                    RuleMark(x: .value("Now", now)).foregroundStyle(UsageStyle.red.opacity(0.7))
+                }
+            }
+            .chartXScale(domain: tl.day...tl.day.addingTimeInterval(86400))
+            .chartXAxis {
+                AxisMarks(values: .stride(by: .hour, count: 3)) { _ in
+                    AxisGridLine(); AxisValueLabel(format: .dateTime.hour())
+                }
+            }
+            .chartYScale(domain: 0...top)
+            .chartYAxis { AxisMarks { v in AxisGridLine(); AxisValueLabel { Text("\(v.as(Double.self).map { Int($0) } ?? 0)%") } } }
+            .padding(.top, 14)
+            .frame(height: 210)
+            Legend(items: [("Session % used in the slot", Color.accentColor), ("Session running", Self.shade(.active)),
+                           ("Idle, no session (missed capacity)", Self.shade(.idle)), ("Not recorded (Mac asleep)", Self.shade(.noData))])
+            Text(summary(tl, today: dayOffset == 0)).font(.callout)
+        }
+    }
+
+    static func shade(_ s: History.SlotState) -> Color {
+        switch s {
+        case .active: return UsageStyle.green.opacity(0.14)
+        case .idle: return UsageStyle.amber.opacity(0.28)
+        case .noData: return Color.secondary.opacity(0.10)
+        case .future: return .clear
+        }
+    }
+
+    private func summary(_ tl: History.DayTimeline, today: Bool) -> String {
+        var parts = ["Used \(Int(tl.used.rounded()))% of a session" + (today ? " so far" : "")]
+        if tl.unusedAtReset > 0 { parts.append("\(Int(tl.unusedAtReset.rounded()))% left unused at resets") }
+        if tl.idleHours >= 0.5 {
+            parts.append(String(format: "%.1f h idle (room for about %.1f more 5-hour sessions)", tl.idleHours, tl.idleSessions))
+        }
+        if tl.noDataHours >= 0.5 { parts.append(String(format: "%.1f h not recorded", tl.noDataHours)) }
+        return parts.joined(separator: " · ")
+    }
+}
+
+struct Legend: View {
+    let items: [(String, Color)]
+    var body: some View {
+        HStack(spacing: 14) {
+            ForEach(Array(items.enumerated()), id: \.offset) { _, it in
+                HStack(spacing: 5) {
+                    RoundedRectangle(cornerRadius: 2).fill(it.1).frame(width: 10, height: 10)
+                    Text(it.0).font(.caption).foregroundStyle(.secondary)
+                }
+            }
         }
     }
 }

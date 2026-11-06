@@ -22,7 +22,7 @@ The dropdown shows:
 - a Claude incident banner when status.anthropic.com reports one
 - last updated, Refresh, **History**, claude.ai usage page, **About**, Settings…, Quit
 
-**History window:** 5-hour windows (peak and unused), days (idle and active hours), weekly trend,
+**History window:** day timeline (30-min or hourly usage, idle and missed capacity), 5-hour windows (peak and unused), days (idle and active hours), weekly trend,
 estimated top chats this week and per window. History starts 2026-11-01 (imported from UsageBar).
 
 **Chat tracking:**

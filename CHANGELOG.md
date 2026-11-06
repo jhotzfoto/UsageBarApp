@@ -2,6 +2,18 @@
 
 All changes to UsageBarApp, newest first, release-note style. Every change gets an entry.
 
+## 0.6.0 — 2026-11-06
+**New**
+- **Day timeline** at the top of History: one day in 30-minute (or 1-hour) slots, with arrows to step
+  back through earlier days. Bars show how much session % you used in each slot. The background shows
+  when a 5-hour session was running, when none was (idle: capacity you could have used, in amber) and
+  when the Mac wasn't recording. Each reset is marked with how much was left unused, plus a line
+  summing up the day: used, unused at resets, idle hours and how many more sessions would have fit.
+
+**Changed**
+- Missed capacity is amber throughout History: unused-at-reset in the 5-hour chart and idle hours in
+  the days chart, each with a legend.
+
 ## 0.5.1 — 2026-11-06
 **Changed**
 - In the menu, **Top chats** now comes right after your limits and **Planning** moves to the bottom.
