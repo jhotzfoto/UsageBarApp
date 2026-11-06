@@ -63,6 +63,7 @@ struct MenuView: View {
                 Button("History") { NSApp.activate(ignoringOtherApps: true); openWindow(id: "history") }
                 Button("claude.ai usage") { NSWorkspace.shared.open(URL(string: "https://claude.ai/settings/usage")!) }
                 Spacer()
+                Button("About") { NSApp.activate(ignoringOtherApps: true); openWindow(id: "about") }
                 Button("Settings…") { NSApp.activate(ignoringOtherApps: true); openSettings() }
                 Button("Quit") { NSApp.terminate(nil) }
             }

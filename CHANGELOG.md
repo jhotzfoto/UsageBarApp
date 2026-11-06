@@ -2,6 +2,28 @@
 
 All changes to UsageBarApp, newest first, release-note style. Every change gets an entry.
 
+## 0.3.0 — 2026-11-05
+**New**
+- **About window** (menu > About, or Settings > General): version, privacy policy, terms,
+  acknowledgements and these release notes.
+- **App icon**: a gauge on a terracotta tile, in Finder, Settings and the About window.
+- **Optional menu bar icon** (Settings > General > Show icon in the menu bar), to tell this item
+  apart from UsageBar while both run. Off by default.
+- **iPhone copy status** in Settings: when the copy your iPhone widget falls back to was last written.
+
+**Changed**
+- **claude.ai tab no longer freezes during chat tracking.** The page script used to wait on each
+  request (synchronous XHR), which could lock the tab for a few seconds. It now runs in the background
+  and the app checks back for the answer.
+- The Chrome fallback for usage uses the same claude.ai organization that chat tracking found, instead
+  of picking the first one.
+
+**Fixed**
+- Alerts now check notification permission first. If notifications are off, Settings > Alerts says
+  so instead of alerts silently going nowhere.
+- "Open at login" shows why it didn't work (or asks you to approve it in Login Items) instead of
+  quietly switching back off.
+
 ## 0.2.3 — 2026-11-05 (fixes from an independent pre-mortem review)
 **Fixed**
 - **Freezes as history grows.** Loading 30,000 log rows took 2.2 s on the main thread. A faster date

@@ -253,6 +253,19 @@ final class UsageCoreTests: XCTestCase {
         let args = ChatTracking.pageArguments(st, now: t0)
         XCTAssertTrue(args.contains("\"want\":[\"c2\"]"))
         XCTAssertFalse(args.contains("__ARGS__"))
+        XCTAssertFalse(args.contains("XMLHttpRequest"), "no synchronous XHR: it freezes the claude.ai tab")
+        XCTAssertNotNil(ChatTracking.apply(pageOutput: "TIMEOUT", to: &st, now: t0))
+    }
+
+    func testPageJobWrapsBodyAndPollsSameKey() {
+        let job = ChatTracking.pageJob("return \"x\";", id: "ab-12")
+        XCTAssertTrue(job.start.contains("__usagebarapp_ab12"))
+        XCTAssertTrue(job.poll.contains("__usagebarapp_ab12"))
+        XCTAssertTrue(job.start.contains("return \"x\";"))
+        XCTAssertTrue(job.start.contains("return \"PENDING\""))
+        let a = ChatTracking.osascriptArguments("return 1;")
+        XCTAssertEqual(a.count, 4)
+        XCTAssertEqual(a[0], "-e")
     }
 
     func testTokensPerPercentCalibration() {

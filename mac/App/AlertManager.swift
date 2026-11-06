@@ -58,8 +58,18 @@ final class AlertManager: ObservableObject {
         c.title = title
         c.body = body
         c.sound = sound == "Default" ? .default : nil
-        UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: UUID().uuidString, content: c, trigger: nil))
-        if sound != "Default" && sound != "None" { NSSound(named: NSSound.Name(sound))?.play() }
+        let sound = self.sound
+        // Check permission first: if notifications are off, say so in Settings instead of failing silently.
+        UNUserNotificationCenter.current().getNotificationSettings { s in
+            let allowed = s.authorizationStatus == .authorized || s.authorizationStatus == .provisional
+            Task { @MainActor in
+                self.permissionDenied = s.authorizationStatus == .denied
+                if s.authorizationStatus == .notDetermined { self.requestPermission() }
+                guard allowed else { return }
+                UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: UUID().uuidString, content: c, trigger: nil))
+                if sound != "Default" && sound != "None" { NSSound(named: NSSound.Name(sound))?.play() }
+            }
+        }
     }
 
     func sendTest() {

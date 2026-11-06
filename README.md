@@ -20,7 +20,7 @@ The dropdown shows:
 - **Top chats this session (est.)**, as in UsageBar 1.4.2: tracked vs logged vs token estimate, top 5,
   total, others, unattributed
 - a Claude incident banner when status.anthropic.com reports one
-- last updated, Refresh, **History**, claude.ai usage page, Settings…, Quit
+- last updated, Refresh, **History**, claude.ai usage page, **About**, Settings…, Quit
 
 **History window:** 5-hour windows (peak and unused), days (idle and active hours), weekly trend,
 estimated top chats this week and per window. History starts 2026-11-01 (imported from UsageBar).
@@ -42,7 +42,8 @@ estimated top chats this week and per window. History starts 2026-11-01 (importe
 - Calls `api.anthropic.com/api/oauth/usage` every 5 min (Settings: 2–60), and when you open the menu
   if the reading is over 30 s old. Backs off on HTTP 429. Countdowns tick every minute without API calls.
 - **Settings:**
-  - check interval, chat tracking, number of top chats, open at login
+  - check interval, chat tracking, number of top chats, menu bar icon, open at login, when the
+    iPhone copy was last written
   - **Alerts** (off by default while UsageBar runs), each with its own toggle and editable thresholds:
     - session 80/95%
     - weekly 75/90%

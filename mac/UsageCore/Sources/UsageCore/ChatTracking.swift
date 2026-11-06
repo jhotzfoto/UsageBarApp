@@ -48,22 +48,21 @@ public enum ChatTracking {
 
     // MARK: claude.ai page
 
-    /// Runs inside the claude.ai tab via AppleScript "execute javascript" (synchronous XHR so the call
-    /// returns the result). Weight per reply: context size at each model call (~4 chars/token, tool
+    /// Body of an async function run inside the claude.ai tab (see `pageJob`; async fetch, so the tab
+    /// never freezes). Weight per reply: context size at each model call (~4 chars/token, tool
     /// results included) + output + ~10k tokens per call for claude.ai's system prompt.
     public static let pageScript = #"""
-    (function(){
     var ARGS = __ARGS__;
     var CALL_OVERHEAD = 10000, FILE_CHARS = 6000;
-    function get(u){var x=new XMLHttpRequest();x.open("GET",u,false);x.send();
-      if(x.status!==200) throw new Error("HTTP "+x.status+" "+u.split("?")[0].split("/").slice(-1)[0]);
-      return JSON.parse(x.responseText);}
+    async function get(u){var r=await fetch(u,{credentials:"same-origin"});
+      if(r.status!==200) throw new Error("HTTP "+r.status+" "+u.split("?")[0].split("/").slice(-1)[0]);
+      return await r.json();}
     function len(v){if(v==null)return 0;if(typeof v==="string")return v.length;return JSON.stringify(v).length;}
     try{
       var org=ARGS.org;
-      if(!org){var orgs=get("/api/organizations");
+      if(!org){var orgs=await get("/api/organizations");
         for(var i=0;i<orgs.length;i++){if((orgs[i].capabilities||[]).indexOf("chat")>=0){org=orgs[i].uuid;break;}}}
-      var list=get("/api/organizations/"+org+"/chat_conversations_v2?limit=30&offset=0&archived=false&consistency=strong");
+      var list=await get("/api/organizations/"+org+"/chat_conversations_v2?limit=30&offset=0&archived=false&consistency=strong");
       var items=(list.data||list).map(function(c){return {uuid:c.uuid,title:c.name||"",updated_at:c.updated_at,platform:c.platform||""};});
       var want=(ARGS.want||[]).slice();
       items.forEach(function(c){
@@ -71,8 +70,9 @@ public enum ChatTracking {
       });
       want=want.slice(0,ARGS.max);
       var details={};
-      want.forEach(function(uuid){
-        var d=get("/api/organizations/"+org+"/chat_conversations/"+uuid+"?tree=False&rendering_mode=messages&render_all_tools=true");
+      for(var k=0;k<want.length;k++){
+        var uuid=want[k];
+        var d=await get("/api/organizations/"+org+"/chat_conversations/"+uuid+"?tree=False&rendering_mode=messages&render_all_tools=true");
         var ctx=0, ev=[];
         (d.chat_messages||[]).forEach(function(m){
           var blocks=m.content||[];
@@ -93,33 +93,71 @@ public enum ChatTracking {
           ev.push([m.created_at, Math.round(tok)]);
         });
         details[uuid]=ev;
-      });
+      }
       return JSON.stringify({ok:true,org:org,items:items,details:details});
     }catch(e){return JSON.stringify({ok:false,error:String(e.message||e)});}
-    })()
     """#
 
-    /// Finds a claude.ai tab (artifact pages last) and runs the script in it. Never opens, focuses or
-    /// navigates anything. Only run after checking Chrome is running ("tell application" would launch it).
+    /// Finds a claude.ai tab (artifact pages last), starts the job there and polls the same tab every
+    /// 0.25 s until it answers (~17 s at most). Never opens, focuses or navigates anything. Only run
+    /// after checking Chrome is running ("tell application" would launch it).
     public static let appleScript = #"""
     on run argv
     set js to item 1 of argv
+    set pollJs to item 2 of argv
     tell application "Google Chrome"
       set best to missing value
       repeat with w in windows
         repeat with t in tabs of w
           set u to URL of t
           if u starts with "https://claude.ai/" then
-            if u does not contain "/artifact/" then return (execute t javascript js)
+            if u does not contain "/artifact/" then return my runIn(t, js, pollJs)
             if best is missing value then set best to t
           end if
         end repeat
       end repeat
-      if best is not missing value then return (execute best javascript js)
+      if best is not missing value then return my runIn(best, js, pollJs)
     end tell
     return "NO_TAB"
     end run
+
+    on runIn(t, js, pollJs)
+    tell application "Google Chrome"
+      set r to (execute t javascript js)
+      repeat 70 times
+        if r is not "PENDING" then return r
+        delay 0.25
+        set r to (execute t javascript pollJs)
+      end repeat
+    end tell
+    return "TIMEOUT"
+    end runIn
     """#
+
+    /// Wraps an async function body (which returns a string) for `appleScript`: the start script runs
+    /// it in the background and returns "PENDING"; the poll script returns "PENDING" until the result,
+    /// stashed on `window` under a per-run key, is ready (then removes it).
+    public static func pageJob(_ body: String, id: String = UUID().uuidString) -> (start: String, poll: String) {
+        let key = "__usagebarapp_" + id.replacingOccurrences(of: "-", with: "")
+        let start = """
+        (function(){var K="\(key)";
+        Object.keys(window).forEach(function(k){if(k.indexOf("__usagebarapp_")===0)delete window[k];});
+        window[K]={done:false};
+        (async function(){
+        \(body)
+        })().then(function(r){window[K]={done:true,r:String(r)};},
+          function(e){window[K]={done:true,r:JSON.stringify({ok:false,error:String(e&&e.message||e)})};});
+        return "PENDING";})()
+        """
+        let poll = #"(function(){var K="\#(key)",v=window[K];if(!v)return "GONE";if(!v.done)return "PENDING";delete window[K];return v.r;})()"#
+        return (start, poll)
+    }
+
+    /// osascript arguments that run `body` (see `pageJob`) in the claude.ai tab.
+    public static func osascriptArguments(_ body: String) -> [String] {
+        let job = pageJob(body)
+        return ["-e", appleScript, job.start, job.poll]
+    }
 
     public static let pausedNoTab = "Chat tracking paused: open claude.ai in Chrome"
     public static let pausedJSOff = "Chat tracking paused: turn on Chrome > View > Developer > Allow JavaScript from Apple Events"
@@ -139,6 +177,7 @@ public enum ChatTracking {
     @discardableResult
     public static func apply(pageOutput out: String, to st: inout Store, now: Date) -> String? {
         if out == "NO_TAB" || out.isEmpty { return pausedNoTab }
+        if out == "TIMEOUT" || out == "GONE" { return "Chat tracking paused: claude.ai didn't answer in time" }
         guard let obj = try? JSONSerialization.jsonObject(with: Data(out.utf8)) as? [String: Any] else {
             return "Chat tracking paused: unreadable answer from claude.ai"
         }

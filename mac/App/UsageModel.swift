@@ -20,8 +20,11 @@ final class UsageModel: ObservableObject {
     @Published private(set) var windows: [History.Window] = []
     @Published private(set) var chats: ChatTracker.Result?
     @Published private(set) var status: ServiceStatus?
+    /// When the iPhone copy (Scriptable's iCloud folder) was last written; nil if not this run.
+    @Published private(set) var iphoneCopyAt: Date?
 
     @Published var refreshMinutes: Int { didSet { UserDefaults.standard.set(refreshMinutes, forKey: "refreshMinutes") } }
+    @Published var menuBarIcon: Bool { didSet { UserDefaults.standard.set(menuBarIcon, forKey: "menuBarIcon") } }
     @Published var chromeTracking: Bool { didSet { UserDefaults.standard.set(chromeTracking, forKey: "chromeTracking") } }
     @Published var topChats: Int { didSet { UserDefaults.standard.set(topChats, forKey: "topChats") } }
 
@@ -51,6 +54,7 @@ final class UsageModel: ObservableObject {
         let saved = d.integer(forKey: "refreshMinutes")
         refreshMinutes = Self.refreshChoices.contains(saved) ? saved : 5
         chromeTracking = d.object(forKey: "chromeTracking") as? Bool ?? true
+        menuBarIcon = d.bool(forKey: "menuBarIcon")
         let tc = d.integer(forKey: "topChats")
         topChats = (1...25).contains(tc) ? tc : 5
         snapshot = SnapshotStore.load()
@@ -104,7 +108,9 @@ final class UsageModel: ObservableObject {
             } catch UsageClient.FetchError.expired where chromeTracking {
                 // Claude Code's login expired (e.g. overnight). Read the same numbers through the open
                 // claude.ai tab instead, so the menu bar doesn't go grey until Claude Code is used again.
-                raw = try await UsageClient.fetchViaChrome()
+                let tracker = self.tracker
+                let org = await Task.detached(priority: .utility) { tracker.load().org }.value
+                raw = try await UsageClient.fetchViaChrome(org: org)
             }
             let s = try UsageParser.snapshot(from: raw)
             snapshot = s
@@ -178,9 +184,10 @@ final class UsageModel: ObservableObject {
         if let url = SnapshotStore.url { try? SnapshotStore.save(s, to: url) }
         // iCloud folders can block (eviction, the first-use privacy prompt), so never on the main thread.
         DispatchQueue.global(qos: .utility).async {
-            if FileManager.default.fileExists(atPath: Self.iphoneMirror.path) {
-                try? SnapshotStore.save(s, to: Self.iphoneMirror.appendingPathComponent("UsageBarApp/snapshot.json"))
-            }
+            guard FileManager.default.fileExists(atPath: Self.iphoneMirror.path),
+                  (try? SnapshotStore.save(s, to: Self.iphoneMirror.appendingPathComponent("UsageBarApp/snapshot.json"))) != nil
+            else { return }
+            DispatchQueue.main.async { self.iphoneCopyAt = Date() }
         }
         // Widgets have a daily refresh budget: reload only when what they show changes.
         let key = s.limits.map { "\($0.key)\(Int($0.percent))" }.joined() + (s.extra.map { "e\(Int($0.percent))" } ?? "")

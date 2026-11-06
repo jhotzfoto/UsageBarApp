@@ -70,7 +70,7 @@ final class ChatTracker {
         let chromeRunning = NSWorkspace.shared.runningApplications.contains { $0.bundleIdentifier == "com.google.Chrome" }
         guard chromeRunning else { return ChatTracking.pausedNoTab }
         do {
-            let out = try Shell.run("/usr/bin/osascript", ["-e", ChatTracking.appleScript, ChatTracking.pageArguments(st, now: now)], timeout: 20)
+            let out = try Shell.run("/usr/bin/osascript", ChatTracking.osascriptArguments(ChatTracking.pageArguments(st, now: now)), timeout: 25)
             return ChatTracking.apply(pageOutput: out, to: &st, now: now)
         } catch let e as Shell.ShellError {
             if e.stderr.contains("JavaScript") && e.stderr.contains("Apple Events") { return ChatTracking.pausedJSOff }

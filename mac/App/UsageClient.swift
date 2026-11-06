@@ -83,23 +83,26 @@ enum UsageClient {
 extension UsageClient {
     /// Same usage numbers, read through the open claude.ai tab in Chrome (used only when the Claude Code
     /// login has expired). Only when Chrome is already running; never opens or focuses anything.
+    /// Async function body for `ChatTracking.pageJob` (async fetch, so the tab never freezes).
+    /// `__ORG__` is the org chat tracking already found, or null to pick the first chat org.
     static let chromeUsageScript = #"""
-    (function(){
-    function get(u){var x=new XMLHttpRequest();x.open("GET",u,false);x.send();
-      if(x.status!==200) throw new Error("HTTP "+x.status); return JSON.parse(x.responseText);}
+    async function get(u){var r=await fetch(u,{credentials:"same-origin"});
+      if(r.status!==200) throw new Error("HTTP "+r.status); return await r.json();}
     try{
-      var orgs=get("/api/organizations"), org=null;
-      for(var i=0;i<orgs.length;i++){if((orgs[i].capabilities||[]).indexOf("chat")>=0){org=orgs[i].uuid;break;}}
-      return JSON.stringify({ok:true,raw:get("/api/organizations/"+org+"/usage")});
+      var org=__ORG__;
+      if(!org){var orgs=await get("/api/organizations");
+        for(var i=0;i<orgs.length;i++){if((orgs[i].capabilities||[]).indexOf("chat")>=0){org=orgs[i].uuid;break;}}}
+      return JSON.stringify({ok:true,raw:await get("/api/organizations/"+org+"/usage")});
     }catch(e){return JSON.stringify({ok:false,error:String(e.message||e)});}
-    })()
     """#
 
-    static func fetchViaChrome() async throws -> [String: Any] {
+    static func fetchViaChrome(org: String?) async throws -> [String: Any] {
         let running = NSWorkspace.shared.runningApplications.contains { $0.bundleIdentifier == "com.google.Chrome" }
         guard running else { throw FetchError.expired }
+        let orgJS = org.flatMap { o in o.allSatisfy { $0.isHexDigit || $0 == "-" } ? "\"\(o)\"" : nil } ?? "null"
+        let body = chromeUsageScript.replacingOccurrences(of: "__ORG__", with: orgJS)
         let out = try await Task.detached(priority: .utility) {
-            try Shell.run("/usr/bin/osascript", ["-e", ChatTracking.appleScript, chromeUsageScript], timeout: 20)
+            try Shell.run("/usr/bin/osascript", ChatTracking.osascriptArguments(body), timeout: 25)
         }.value
         guard let obj = try? JSONSerialization.jsonObject(with: Data(out.utf8)) as? [String: Any],
               (obj["ok"] as? Bool) == true, let raw = obj["raw"] as? [String: Any] else { throw FetchError.expired }

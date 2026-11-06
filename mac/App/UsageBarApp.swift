@@ -23,6 +23,11 @@ struct UsageBarAppMain: App {
         }
         .defaultSize(width: 820, height: 760)
 
+        Window("About UsageBarApp", id: "about") {
+            AboutView()
+        }
+        .windowResizability(.contentSize)
+
         Settings {
             SettingsView()
                 .environmentObject(model)
@@ -54,9 +59,14 @@ struct MenuBarLabel: View {
         let text = parts.isEmpty ? "Claude ?" : parts.map(\.0).joined(separator: " · ")
         let color: Color = (model.staleReason != nil || parts.isEmpty) ? UsageStyle.dim
             : UsageStyle.color(for: parts.map(\.1).max() ?? 0)
+        // Optional icon in front, to tell this item apart from UsageBar (SwiftBar) while both run.
         let renderer = ImageRenderer(content:
-            Text(text).font(.system(size: 13, weight: .medium).monospacedDigit()).foregroundStyle(color)
-                .padding(.horizontal, 1))
+            HStack(spacing: 3) {
+                if model.menuBarIcon { Image(systemName: "gauge.with.dots.needle.67percent") }
+                Text(text)
+            }
+            .font(.system(size: 13, weight: .medium).monospacedDigit()).foregroundStyle(color)
+            .padding(.horizontal, 1))
         renderer.scale = NSScreen.main?.backingScaleFactor ?? 2
         let img = renderer.nsImage ?? NSImage()
         img.isTemplate = false
@@ -67,7 +77,16 @@ struct MenuBarLabel: View {
 /// Launch at login through the system's Login Items (user-controlled toggle, off by default).
 enum LaunchAtLogin {
     static var isOn: Bool { SMAppService.mainApp.status == .enabled }
-    static func set(_ on: Bool) {
-        try? on ? SMAppService.mainApp.register() : SMAppService.mainApp.unregister()
+    /// Returns why it didn't work, if it didn't (shown in Settings instead of failing silently).
+    static func set(_ on: Bool) -> String? {
+        do {
+            try on ? SMAppService.mainApp.register() : SMAppService.mainApp.unregister()
+        } catch {
+            return error.localizedDescription
+        }
+        if on && SMAppService.mainApp.status == .requiresApproval {
+            return "Allow UsageBarApp in System Settings > General > Login Items."
+        }
+        return nil
     }
 }

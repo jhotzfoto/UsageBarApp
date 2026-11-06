@@ -4,7 +4,9 @@ import UsageCore
 struct SettingsView: View {
     @EnvironmentObject var model: UsageModel
     @EnvironmentObject var alerts: AlertManager
+    @Environment(\.openWindow) private var openWindow
     @State private var launchAtLogin = LaunchAtLogin.isOn
+    @State private var loginError: String?
 
     var body: some View {
         TabView {
@@ -31,11 +33,28 @@ struct SettingsView: View {
                     .font(.caption).foregroundStyle(.secondary)
                 Stepper("Top chats shown: \(model.topChats)", value: $model.topChats, in: 1...25)
             }
-            Section("General") {
-                Toggle("Open at login", isOn: $launchAtLogin)
-                    .onChange(of: launchAtLogin) { _, on in LaunchAtLogin.set(on); launchAtLogin = LaunchAtLogin.isOn }
-                Text("Version \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?")")
+            Section("iPhone") {
+                Text(model.iphoneCopyAt.map { "iPhone copy last written \($0.formatted(date: .omitted, time: .shortened))" }
+                     ?? (FileManager.default.fileExists(atPath: UsageModel.iphoneMirror.path)
+                         ? "iPhone copy not written yet since the app started"
+                         : "Scriptable's iCloud folder not found; install Scriptable on the iPhone to use the widgets"))
+                    .font(.callout)
+                Text("Your iPhone widget falls back to this copy when it can't read claude.ai itself.")
                     .font(.caption).foregroundStyle(.secondary)
+            }
+            Section("General") {
+                Toggle("Show icon in the menu bar", isOn: $model.menuBarIcon)
+                Toggle("Open at login", isOn: $launchAtLogin)
+                    .onChange(of: launchAtLogin) { _, on in
+                        loginError = LaunchAtLogin.set(on)
+                        launchAtLogin = LaunchAtLogin.isOn
+                    }
+                if let e = loginError { Text(e).font(.caption).foregroundStyle(UsageStyle.amber) }
+                HStack {
+                    Text("Version \(AboutView.version)").font(.caption).foregroundStyle(.secondary)
+                    Spacer()
+                    Button("About UsageBarApp") { NSApp.activate(ignoringOtherApps: true); openWindow(id: "about") }
+                }
             }
         }
         .formStyle(.grouped)
