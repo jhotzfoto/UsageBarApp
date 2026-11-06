@@ -2,6 +2,11 @@
 
 All changes to UsageBarApp, newest first, release-note style. Every change gets an entry.
 
+## 0.7.1 — 2026-11-06
+**New**
+- **Pick any day in the Day timeline.** Click the date in History > Day timeline to open a calendar
+  (from the first tracked day to today). A **Today** button jumps back. The arrows still step day by day.
+
 ## 0.7.0 — 2026-11-06
 **New**
 - **Claude History widget for iPhone**, separate from Claude Usage (Scriptable > Claude History).

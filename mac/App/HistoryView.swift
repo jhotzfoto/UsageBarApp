@@ -136,6 +136,7 @@ struct DayTimelineSection: View {
     @EnvironmentObject var model: UsageModel
     @State private var dayOffset = 0
     @State private var slotMinutes = 30
+    @State private var picking = false
 
     var body: some View {
         let cal = Calendar.current
@@ -150,10 +151,25 @@ struct DayTimelineSection: View {
                 Spacer()
                 Button { dayOffset += 1 } label: { Image(systemName: "chevron.left") }
                     .disabled(first.map { day <= $0 } ?? true)
-                Text(dayOffset == 0 ? "Today" : day.formatted(.dateTime.weekday(.wide).month(.abbreviated).day()))
-                    .monospacedDigit().frame(minWidth: 120)
+                // Click the date to pick any day from a calendar.
+                Button { picking = true } label: {
+                    Label(dayOffset == 0 ? "Today" : day.formatted(.dateTime.weekday(.wide).month(.abbreviated).day()),
+                          systemImage: "calendar")
+                        .monospacedDigit().frame(minWidth: 150)
+                }
+                .popover(isPresented: $picking, arrowEdge: .bottom) {
+                    let today = cal.startOfDay(for: now)
+                    DatePicker("", selection: Binding(
+                        get: { day },
+                        set: { d in
+                            dayOffset = max(0, cal.dateComponents([.day], from: cal.startOfDay(for: d), to: today).day ?? 0)
+                            picking = false
+                        }), in: (first ?? today)...today, displayedComponents: .date)
+                        .datePickerStyle(.graphical).labelsHidden().padding(12)
+                }
                 Button { dayOffset -= 1 } label: { Image(systemName: "chevron.right") }
                     .disabled(dayOffset == 0)
+                if dayOffset != 0 { Button("Today") { dayOffset = 0 } }
                 Picker("", selection: $slotMinutes) { Text("30 min").tag(30); Text("1 hour").tag(60) }
                     .pickerStyle(.segmented).labelsHidden().frame(width: 140)
             }
