@@ -6,7 +6,8 @@
 > - Phase 3 (iPhone) scripts are written; the test is waiting on the phone.
 
 A native Mac app + Mac widgets + iPhone widgets showing live Claude usage, built for $0 for personal
-use. It runs **alongside** UsageBar (SwiftBar), which stays exactly as it is. Quality over speed.
+use. Quality over speed. It replaced UsageBar (SwiftBar), which was uninstalled on 2026-11-05 at Josh's
+request (its project folder in ../UsageBar is kept as history).
 
 ## Decisions
 | Topic | Decision |

@@ -2,6 +2,18 @@
 
 All changes to UsageBarApp, newest first, release-note style. Every change gets an entry.
 
+## 0.5.0 — 2026-11-05 (UsageBarApp replaces UsageBar)
+**New**
+- **Stays visible in the menu bar.** The app backs up where you put its menu bar item and, at every
+  launch and after updates, puts back a lost position and turns the item back on if it was removed,
+  so a menu bar manager such as Ice is less likely to tuck it into its hidden section.
+
+**Changed**
+- **The old UsageBar (SwiftBar) is retired** and uninstalled, together with SwiftBar, which only ran
+  it. This app is now the only Claude usage item, so alerts are on by default again.
+- Removed the "Claude Login Test" iPhone script (the in-app sign-in experiment). Replacing the session
+  key lives in Claude Usage: run it and tap Change session key.
+
 ## 0.4.0 — 2026-11-05
 **New**
 - **iPhone session key tracker.** The iPhone script now records when you saved the key, when it last

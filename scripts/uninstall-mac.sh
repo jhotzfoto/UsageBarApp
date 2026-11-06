@@ -1,6 +1,6 @@
 #!/bin/zsh
 # Removes UsageBarApp from this Mac: the app (and its widgets), its shared data and its settings.
-# UsageBar (SwiftBar) is not touched. The Claude Code Keychain item is never touched.
+# The Claude Code Keychain item is never touched.
 set -uo pipefail
 pkill -x UsageBarApp 2>/dev/null
 rm -rf "$HOME/Applications/UsageBarApp.app"

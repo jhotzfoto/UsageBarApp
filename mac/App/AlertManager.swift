@@ -3,8 +3,8 @@ import Foundation
 import UsageCore
 import UserNotifications
 
-/// Delivers what AlertEngine decides. Sending is off by default while UsageBar is still in use (no
-/// duplicates); the bookkeeping always runs, so turning alerts on later doesn't replay old ones.
+/// Delivers what AlertEngine decides. Sending is on by default; the bookkeeping always runs, so
+/// turning alerts back on later doesn't replay old ones.
 @MainActor
 final class AlertManager: ObservableObject {
     static let sounds = ["Default", "None", "Glass", "Hero", "Ping", "Purr", "Submarine", "Funk", "Blow", "Sosumi"]
@@ -18,7 +18,7 @@ final class AlertManager: ObservableObject {
     private let defaults = UserDefaults.standard
 
     init() {
-        enabled = defaults.bool(forKey: "alertsEnabled")
+        enabled = defaults.object(forKey: "alertsEnabled") as? Bool ?? true
         sound = defaults.string(forKey: "alertSound") ?? "Default"
         config = Self.loadJSON("alertConfig") ?? AlertConfig()
         state = Self.loadJSON("alertState") ?? AlertState()

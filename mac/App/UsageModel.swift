@@ -116,6 +116,7 @@ final class UsageModel: ObservableObject {
         Task { await refresh(minGap: max(Self.minFetchGap, Double(refreshMinutes) * 60 - 30)) }
         if now.timeIntervalSince(lastStatusCheck) >= 5 * 60 { Task { await checkStatus() } }
         loadPhoneKey()
+        MenuBarPosition.save()
     }
 
     /// Fetches if the reading is at least `minGap` seconds old, we're not backing off (429 or repeated

@@ -74,7 +74,7 @@ struct SettingsView: View {
         Form {
             Section {
                 Toggle("Send alerts", isOn: $alerts.enabled)
-                Text("Off while UsageBar (SwiftBar) is still running, so you don't get every alert twice. Alerts are still tracked while off, so turning them on doesn't replay old ones.")
+                Text("Alerts are still tracked while off, so turning them back on doesn't replay old ones.")
                     .font(.caption).foregroundStyle(.secondary)
                 Picker("Sound", selection: $alerts.sound) { ForEach(AlertManager.sounds, id: \.self) { Text($0).tag($0) } }
                 HStack {

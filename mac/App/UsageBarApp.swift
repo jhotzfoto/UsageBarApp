@@ -7,6 +7,8 @@ import UsageCore
 struct UsageBarAppMain: App {
     @StateObject private var model = UsageModel()
 
+    init() { MenuBarPosition.restore() }   // before the menu bar item is created
+
     var body: some Scene {
         MenuBarExtra {
             MenuView()
@@ -59,7 +61,7 @@ struct MenuBarLabel: View {
         let text = parts.isEmpty ? "Claude ?" : parts.map(\.0).joined(separator: " · ")
         let color: Color = (model.staleReason != nil || parts.isEmpty) ? UsageStyle.dim
             : UsageStyle.color(for: parts.map(\.1).max() ?? 0)
-        // Optional icon in front, to tell this item apart from UsageBar (SwiftBar) while both run.
+        // Optional icon in front of the text.
         let renderer = ImageRenderer(content:
             HStack(spacing: 3) {
                 if model.menuBarIcon { Image(systemName: "gauge.with.dots.needle.67percent") }
@@ -71,6 +73,31 @@ struct MenuBarLabel: View {
         let img = renderer.nsImage ?? NSImage()
         img.isTemplate = false
         return img
+    }
+}
+
+/// Keeps the menu bar item where you put it. macOS saves its position in this app's settings; a
+/// reset (or a menu bar manager such as Ice treating it as new after an update) can drop it into a
+/// hidden section. The app backs the position up every minute while it's visible, and at launch
+/// puts back a missing position and turns the item back on if it was removed.
+enum MenuBarPosition {
+    static let positionKey = "NSStatusItem Preferred Position Item-0"
+    static let visibleKey = "NSStatusItem Visible Item-0"
+    static let backupKey = "menuBarPositionBackup"
+
+    static func restore() {
+        let d = UserDefaults.standard
+        if d.object(forKey: positionKey) == nil, let saved = d.object(forKey: backupKey) as? Double {
+            d.set(saved, forKey: positionKey)
+        }
+        if d.object(forKey: visibleKey) as? Bool == false { d.set(true, forKey: visibleKey) }
+    }
+
+    static func save() {
+        let d = UserDefaults.standard
+        if let p = d.object(forKey: positionKey) as? Double, d.object(forKey: visibleKey) as? Bool != false {
+            d.set(p, forKey: backupKey)
+        }
     }
 }
 

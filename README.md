@@ -47,7 +47,7 @@ estimated top chats this week and per window. History starts 2026-11-01 (importe
   - **iPhone session key**: how long each pasted key has lasted (from the iPhone's record in
     Scriptable's iCloud folder, `UsageBarApp/key-status.json`, times only) and a notification when it
     stops working
-  - **Alerts** (off by default while UsageBar runs), each with its own toggle and editable thresholds:
+  - **Alerts** (on by default), each with its own toggle and editable thresholds:
     - session 80/95%
     - weekly 75/90%
     - extra usage 80/95/100%
@@ -77,13 +77,14 @@ Right-click the desktop > Edit Widgets > search "UsageBarApp":
 They read the app's shared snapshot (App Group `KFT88Q5XQ9.com.joshhotz.usagebarapp`) and update after
 every reading.
 
-## iPhone (Scriptable), not tested yet
+## iPhone (Scriptable)
 1. Install **Scriptable** (free) on the iPhone and open it once. This creates its iCloud folder; after
    that, the Mac app also copies its reading there (`UsageBarApp/snapshot.json`) as a fallback.
-2. Copy `iphone/login-test.js` and `iphone/UsageBarApp.js` into Scriptable (iCloud Drive > Scriptable).
-3. Run `login-test.js` in Scriptable and sign into claude.ai when asked. Then add it as a widget to
-   check it works from a widget.
-4. Add `UsageBarApp.js` as widgets:
+2. Copy `iphone/UsageBarApp.js` into Scriptable (iCloud Drive > Scriptable) as **Claude Usage**.
+3. On the Mac, copy the `sessionKey` cookie from Chrome (claude.ai tab > ⌘⌥I > Application > Cookies >
+   https://claude.ai). On the iPhone, run Claude Usage; the key is pre-filled from Universal Clipboard.
+   Tap Save. It stays in the iPhone Keychain. To replace it later: run Claude Usage > Change session key.
+4. Add Claude Usage as widgets:
    - Home Screen: small, medium
    - Lock Screen: circular, rectangular, inline
 
@@ -105,5 +106,5 @@ old it is.
    the settings and the build folders. If you added the status line, remove the `statusLine` entry from
    `~/.claude/settings.json`. If you turned on "Open at login", also remove it in System Settings > General >
    Login Items.
-2. iPhone: remove the widgets, then delete the two scripts in Scriptable (and Scriptable itself if wanted).
-3. UsageBar (SwiftBar) and the Claude Code Keychain item are not affected.
+2. iPhone: remove the widgets, then delete Claude Usage in Scriptable (and Scriptable itself if wanted).
+3. The Claude Code Keychain item is not affected.
