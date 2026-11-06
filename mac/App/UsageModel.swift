@@ -30,6 +30,11 @@ final class UsageModel: ObservableObject {
     private var backoffUntil = Date.distantPast
     private var lastStatusCheck = Date.distantPast
     private var lastRollup = Date.distantPast
+    private var fetchStartedAt = Date.distantPast
+    private var lastAttemptAt = Date.distantPast
+    private var errorStreak = 0
+    private var lastWidgetKey = ""
+    private var lastChatPass = Date.distantPast
 
     static let dataDir = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent("Library/Application Support/UsageBarApp")
@@ -49,8 +54,7 @@ final class UsageModel: ObservableObject {
         let tc = d.integer(forKey: "topChats")
         topChats = (1...25).contains(tc) ? tc : 5
         snapshot = SnapshotStore.load()
-        reloadLog()
-        chats = tracker.cached(readings: readings)
+        Task { await reloadLog() }   // off the main thread: the log grows to tens of thousands of rows
     }
 
     func start() {
@@ -60,7 +64,11 @@ final class UsageModel: ObservableObject {
         }
         NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification,
                                                           object: nil, queue: .main) { [weak self] _ in
-            Task { @MainActor in await self?.refresh(minGap: Self.clickFetchGap) }
+            // Give the network a moment after wake, so the first fetch doesn't just fail.
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 10_000_000_000)
+                await self?.refresh(minGap: Self.clickFetchGap)
+            }
         }
         writeStatusline()
         Task { await refresh(minGap: Self.minFetchGap) }
@@ -79,19 +87,34 @@ final class UsageModel: ObservableObject {
         if now.timeIntervalSince(lastStatusCheck) >= 5 * 60 { Task { await checkStatus() } }
     }
 
-    /// Fetches if the reading is at least `minGap` seconds old (and we're not backing off after a 429).
+    /// Fetches if the reading is at least `minGap` seconds old, we're not backing off (429 or repeated
+    /// errors), and no fetch is running (a fetch stuck for over 3 min is treated as gone).
     func refresh(minGap: TimeInterval) async {
         let age = snapshot.map { Date().timeIntervalSince($0.fetchedAt) } ?? .infinity
-        guard !isFetching, age >= minGap, Date() >= backoffUntil else { return }
+        let stuck = isFetching && Date().timeIntervalSince(fetchStartedAt) > 180
+        guard !isFetching || stuck, age >= minGap, Date() >= backoffUntil else { return }
         isFetching = true
+        fetchStartedAt = Date()
+        lastAttemptAt = Date()
         defer { isFetching = false }
         do {
-            let raw = try await UsageClient.fetch()
+            let raw: [String: Any]
+            do {
+                raw = try await UsageClient.fetch()
+            } catch UsageClient.FetchError.expired where chromeTracking {
+                // Claude Code's login expired (e.g. overnight). Read the same numbers through the open
+                // claude.ai tab instead, so the menu bar doesn't go grey until Claude Code is used again.
+                raw = try await UsageClient.fetchViaChrome()
+            }
             let s = try UsageParser.snapshot(from: raw)
             snapshot = s
+            errorStreak = 0
             try? log.append(s)
-            if Date().timeIntervalSince(lastRollup) > 86400 { log.rollup(); lastRollup = Date() }
-            reloadLog()
+            appendReadings(s)
+            if Date().timeIntervalSince(lastRollup) > 86400 {
+                lastRollup = Date()
+                if log.rollup() > 0 { await reloadLog() }
+            }
             trackChats()
         } catch UsageClient.FetchError.rateLimited(let ra) {
             backoffUntil = Date().addingTimeInterval(ra)
@@ -101,19 +124,38 @@ final class UsageModel: ObservableObject {
             s.error = error.localizedDescription
             s.errorAt = Date()
             snapshot = s
+            // Back off on repeated errors: 2, 4, 8, then 15 min, instead of retrying every minute.
+            errorStreak += 1
+            backoffUntil = Date().addingTimeInterval(min(900, 120 * pow(2, Double(errorStreak - 1))))
         }
         now = Date()
         publish()
         alerts.check(snapshot, now: now)
     }
 
-    private func reloadLog() {
-        readings = log.load(since: Date().addingTimeInterval(-Double(ReadingsLog.keepDays + 1) * 86400))
-        daily = log.loadDaily()
+    private func reloadLog() async {
+        let log = self.log
+        let since = Date().addingTimeInterval(-Double(ReadingsLog.keepDays + 1) * 86400)
+        let (r, d) = await Task.detached(priority: .utility) { (log.load(since: since), log.loadDaily()) }.value
+        readings = r
+        daily = d
+        windows = History.windows(readings: r, daily: d, now: Date())
+        if chats == nil {
+            let tracker = self.tracker
+            chats = await Task.detached(priority: .utility) { tracker.cached(readings: r) }.value
+        }
+    }
+
+    /// Adds a new reading in memory (the log file is only re-read after a rollup).
+    private func appendReadings(_ s: Snapshot) {
+        readings.append(contentsOf: s.limits.map { Reading(ts: s.fetchedAt, key: $0.key, label: $0.label, percent: $0.percent, resetsAt: $0.resetsAt) })
         windows = History.windows(readings: readings, daily: daily, now: Date())
     }
 
+    /// At most every 5 min, whatever the check interval: each pass reads the claude.ai tab.
     private func trackChats() {
+        guard Date().timeIntervalSince(lastChatPass) >= 290 else { return }
+        lastChatPass = Date()
         let since = Date().addingTimeInterval(-ChatTracking.keepDays * 86400 - History.sessionLength)
         tracker.pass(readings: readings.filter { $0.ts >= since }, includeChrome: chromeTracking) { [weak self] r in
             self?.chats = r
@@ -140,7 +182,10 @@ final class UsageModel: ObservableObject {
                 try? SnapshotStore.save(s, to: Self.iphoneMirror.appendingPathComponent("UsageBarApp/snapshot.json"))
             }
         }
-        WidgetCenter.shared.reloadAllTimelines()
+        // Widgets have a daily refresh budget: reload only when what they show changes.
+        let key = s.limits.map { "\($0.key)\(Int($0.percent))" }.joined() + (s.extra.map { "e\(Int($0.percent))" } ?? "")
+            + (s.lastError == nil ? "" : "err")
+        if key != lastWidgetKey { lastWidgetKey = key; WidgetCenter.shared.reloadAllTimelines() }
         writeStatusline()
     }
 

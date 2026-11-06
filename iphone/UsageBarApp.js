@@ -127,7 +127,11 @@ function bar(stack, p, c, width) {
 function build(family, reading, err) {
   const now = new Date();
   const w = new ListWidget();
-  w.refreshAfterDate = new Date(now.getTime() + 15 * 60000);
+  // Refresh in 15 min, or just after the session resets if that's sooner (so 0% shows on time).
+  let next = now.getTime() + 15 * 60000;
+  const sr = reading && reading.limits.find(l => l.group === 'session');
+  if (sr && sr.resetsAt) { const t = new Date(sr.resetsAt).getTime() + 60000; if (t > now.getTime() && t < next) next = t; }
+  w.refreshAfterDate = new Date(next);
   w.url = 'https://claude.ai/settings/usage';
   if (!reading) {
     const t = w.addText(err === 'noKey' ? 'Open Scriptable to set up' : 'No Claude reading yet');

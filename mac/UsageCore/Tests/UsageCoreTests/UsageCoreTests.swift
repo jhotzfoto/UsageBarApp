@@ -264,6 +264,38 @@ final class UsageCoreTests: XCTestCase {
         XCTAssertEqual(c.windows, 1)
     }
 
+    // MARK: pre-mortem fixes
+
+    func testSingleFailedFetchIsNotStale() {
+        var s = snap(30, at: t0, reset: t0.addingTimeInterval(3600))
+        s.error = "offline"; s.errorAt = t0.addingTimeInterval(60)
+        XCTAssertNil(s.staleReason(staleAfter: 600, now: t0.addingTimeInterval(120)), "fresh reading + one error isn't stale")
+        XCTAssertEqual(s.lastError, "offline")
+        XCTAssertEqual(s.staleReason(staleAfter: 600, now: t0.addingTimeInterval(700)), "offline")
+        var st = AlertState()
+        XCTAssertFalse(AlertEngine.evaluate(s, config: AlertConfig(), state: &st, now: t0.addingTimeInterval(120))
+            .contains { $0.title == "Claude usage not updating" })
+    }
+
+    func testDateFractionsAndCSVMixedQuoting() {
+        XCTAssertEqual(UsageParser.date("2026-11-02T04:00:00.316268+00:00")?.timeIntervalSince1970, 1_793_592_000)
+        XCTAssertEqual(UsageParser.date("2026-11-02T04:00:00.3Z")?.timeIntervalSince1970, 1_793_592_000)
+        XCTAssertEqual(UsageParser.date("2026-11-02T04:00:00+00:00")?.timeIntervalSince1970, 1_793_592_000)
+        XCTAssertNil(UsageParser.date(""))
+        let rows = CSV.rows("h1,h2\r\na,b\n\"x, y\",z\n")
+        XCTAssertEqual(rows, [["h1", "h2"], ["a", "b"], ["x, y", "z"]])
+    }
+
+    func testLogLoadSpeed() throws {
+        let log = ReadingsLog(directory: tmp)
+        var text = "fetched_at,key,label,percent,resets_at\n"
+        for i in 0..<30000 { text += "\(CSV.iso(t0.addingTimeInterval(Double(i) * 120))),session,Session (5h),12.0,\(CSV.iso(t0.addingTimeInterval(18000)))\n" }
+        try text.write(to: log.url, atomically: true, encoding: .utf8)
+        let start = Date()
+        XCTAssertEqual(log.load().count, 30000)
+        XCTAssertLessThan(Date().timeIntervalSince(start), 1.0, "30k rows should load well under a second")
+    }
+
     // MARK: status line
 
     func testStatuslineText() {

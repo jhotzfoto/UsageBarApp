@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import UsageCore
 
@@ -13,23 +14,31 @@ enum UsageClient {
     enum FetchError: LocalizedError {
         case message(String)
         case rateLimited(retryAfter: TimeInterval)
+        case expired
         var errorDescription: String? {
             switch self {
             case .message(let m): return m
             case .rateLimited: return "Rate limited by usage endpoint"
+            case .expired: return "Claude Code login expired. Open Claude Code to refresh it."
             }
         }
     }
 
     static func readToken() throws -> String {
-        let out = try Shell.run("/usr/bin/security", ["find-generic-password", "-s", keychainService, "-w"])
+        // Long timeout: if macOS ever shows a Keychain prompt, you need time to click Always Allow.
+        let out: String
+        do {
+            out = try Shell.run("/usr/bin/security", ["find-generic-password", "-s", keychainService, "-w"], timeout: 120)
+        } catch Shell.ShellError.timedOut {
+            throw FetchError.message("Waiting for Keychain access: click Always Allow if macOS asks.")
+        }
         guard let data = out.data(using: .utf8),
               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let oauth = obj["claudeAiOauth"] as? [String: Any],
               let token = oauth["accessToken"] as? String, !token.isEmpty
         else { throw FetchError.message("No Claude Code login found. Run `claude` once.") }
         if let exp = (oauth["expiresAt"] as? NSNumber)?.doubleValue, exp / 1000 < Date().timeIntervalSince1970 {
-            throw FetchError.message("Claude Code login expired. Open Claude Code to refresh it.")
+            throw FetchError.expired
         }
         return token
     }
@@ -71,31 +80,77 @@ enum UsageClient {
     }
 }
 
+extension UsageClient {
+    /// Same usage numbers, read through the open claude.ai tab in Chrome (used only when the Claude Code
+    /// login has expired). Only when Chrome is already running; never opens or focuses anything.
+    static let chromeUsageScript = #"""
+    (function(){
+    function get(u){var x=new XMLHttpRequest();x.open("GET",u,false);x.send();
+      if(x.status!==200) throw new Error("HTTP "+x.status); return JSON.parse(x.responseText);}
+    try{
+      var orgs=get("/api/organizations"), org=null;
+      for(var i=0;i<orgs.length;i++){if((orgs[i].capabilities||[]).indexOf("chat")>=0){org=orgs[i].uuid;break;}}
+      return JSON.stringify({ok:true,raw:get("/api/organizations/"+org+"/usage")});
+    }catch(e){return JSON.stringify({ok:false,error:String(e.message||e)});}
+    })()
+    """#
+
+    static func fetchViaChrome() async throws -> [String: Any] {
+        let running = NSWorkspace.shared.runningApplications.contains { $0.bundleIdentifier == "com.google.Chrome" }
+        guard running else { throw FetchError.expired }
+        let out = try await Task.detached(priority: .utility) {
+            try Shell.run("/usr/bin/osascript", ["-e", ChatTracking.appleScript, chromeUsageScript], timeout: 20)
+        }.value
+        guard let obj = try? JSONSerialization.jsonObject(with: Data(out.utf8)) as? [String: Any],
+              (obj["ok"] as? Bool) == true, let raw = obj["raw"] as? [String: Any] else { throw FetchError.expired }
+        return raw
+    }
+}
+
 enum Shell {
-    /// Runs a program and returns its trimmed stdout; throws on a non-zero exit or timeout.
+    /// Runs a program and returns its trimmed stdout. Never hangs: output is collected as it arrives
+    /// and the process is killed after `timeout` (a child holding the pipe open can't block us).
     static func run(_ path: String, _ args: [String], timeout: TimeInterval = 15) throws -> String {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: path)
         p.arguments = args
-        let pipe = Pipe(), err = Pipe()
-        p.standardOutput = pipe
-        p.standardError = err
+        let outPipe = Pipe(), errPipe = Pipe()
+        p.standardOutput = outPipe
+        p.standardError = errPipe
+        let lock = NSLock()
+        var out = Data(), err = Data()
+        outPipe.fileHandleForReading.readabilityHandler = { h in let d = h.availableData; lock.withLock { out.append(d) } }
+        errPipe.fileHandleForReading.readabilityHandler = { h in let d = h.availableData; lock.withLock { err.append(d) } }
+        let done = DispatchSemaphore(value: 0)
+        p.terminationHandler = { _ in done.signal() }
         try p.run()
-        let deadline = DispatchTime.now() + timeout
-        DispatchQueue.global().asyncAfter(deadline: deadline) { if p.isRunning { p.terminate() } }
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        let errData = err.fileHandleForReading.readDataToEndOfFile()
-        p.waitUntilExit()
-        guard p.terminationStatus == 0 else {
-            let msg = String(decoding: errData, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
-            throw ShellError(status: p.terminationStatus, stderr: msg)
+        let timedOut = done.wait(timeout: .now() + timeout) == .timedOut
+        if timedOut {
+            p.terminate()
+            _ = done.wait(timeout: .now() + 2)
         }
-        return String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+        Thread.sleep(forTimeInterval: 0.05)   // let the last output arrive
+        outPipe.fileHandleForReading.readabilityHandler = nil
+        errPipe.fileHandleForReading.readabilityHandler = nil
+        try? outPipe.fileHandleForReading.close()
+        try? errPipe.fileHandleForReading.close()
+        if timedOut { throw ShellError.timedOut }
+        let (o, e) = lock.withLock { (out, err) }
+        guard p.terminationStatus == 0 else {
+            throw ShellError.failed(status: p.terminationStatus, stderr: String(decoding: e, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines))
+        }
+        return String(decoding: o, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    struct ShellError: LocalizedError {
-        let status: Int32
-        let stderr: String
-        var errorDescription: String? { stderr.isEmpty ? "exit \(status)" : stderr }
+    enum ShellError: LocalizedError {
+        case failed(status: Int32, stderr: String)
+        case timedOut
+        var stderr: String { if case .failed(_, let e) = self { return e }; return "" }
+        var errorDescription: String? {
+            switch self {
+            case .failed(let st, let e): return e.isEmpty ? "exit \(st)" : e
+            case .timedOut: return "timed out"
+            }
+        }
     }
 }

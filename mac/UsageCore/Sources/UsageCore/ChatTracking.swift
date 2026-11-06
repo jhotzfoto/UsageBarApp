@@ -126,7 +126,7 @@ public enum ChatTracking {
 
     /// Arguments for one pass: known chats (unchanged ones are skipped) and chats still pending.
     public static func pageArguments(_ st: Store, now: Date) -> String {
-        let cutoff = ISO8601DateFormatter().string(from: now.addingTimeInterval(-keepDays * 86400)).replacingOccurrences(of: "Z", with: "")
+        let cutoff = CSV.iso(now.addingTimeInterval(-keepDays * 86400)).replacingOccurrences(of: "+00:00", with: "")
         let known = st.chats.filter { !$0.value.stale }.mapValues { $0.updatedAt }
         let want = st.chats.filter { $0.value.stale }.map(\.key)
         var args: [String: Any] = ["known": known, "want": want, "cutoff": cutoff, "max": maxDetailsPerPass]
@@ -146,7 +146,7 @@ public enum ChatTracking {
             return "Chat tracking paused: claude.ai \((obj["error"] as? String ?? "error").prefix(80))"
         }
         if let o = obj["org"] as? String { st.org = o }
-        let cutoff = ISO8601DateFormatter().string(from: now.addingTimeInterval(-keepDays * 86400)).replacingOccurrences(of: "Z", with: "")
+        let cutoff = CSV.iso(now.addingTimeInterval(-keepDays * 86400)).replacingOccurrences(of: "+00:00", with: "")
         for it in obj["items"] as? [[String: Any]] ?? [] {
             guard let uuid = it["uuid"] as? String else { continue }
             var c = st.chats[uuid] ?? ChatInfo()

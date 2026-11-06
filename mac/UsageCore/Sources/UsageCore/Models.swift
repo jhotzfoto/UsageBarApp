@@ -65,11 +65,18 @@ public struct Snapshot: Codable {
     public var session: UsageLimit? { limits.first { $0.group == "session" } }
     public var weekly: UsageLimit? { limits.first { $0.key == "weekly_all" } ?? limits.first { $0.group == "weekly" } }
 
-    /// Error newer than the reading, or a reading older than `staleAfter`.
+    /// Stale only once the last good reading is older than `staleAfter` (a single failed fetch, e.g.
+    /// right after wake, isn't); the reason is the latest error if there is one.
     public func staleReason(staleAfter: TimeInterval, now: Date = Date()) -> String? {
-        if let e = error, let at = errorAt, at > fetchedAt { return e }
         let age = now.timeIntervalSince(fetchedAt)
-        if age > staleAfter { return "No successful update for \(Int(age / 60)) min" }
+        guard age > staleAfter else { return nil }
+        if let e = lastError { return e }
+        return "No successful update for \(Int(age / 60)) min"
+    }
+
+    /// The latest error, if it's newer than the last good reading.
+    public var lastError: String? {
+        if let e = error, let at = errorAt, at > fetchedAt { return e }
         return nil
     }
 }

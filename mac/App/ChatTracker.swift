@@ -77,6 +77,9 @@ final class ChatTracker {
             if e.stderr.contains("-1743") || e.stderr.lowercased().contains("not allowed") {
                 return "Chat tracking paused: allow UsageBarApp to control Chrome (System Settings > Privacy & Security > Automation)"
             }
+            if case .timedOut = e {
+                return "Chat tracking paused: Chrome didn't answer in time. If macOS asked to let UsageBarApp control Chrome, click OK."
+            }
             return "Chat tracking paused: Chrome didn't answer (\(e.stderr.suffix(80)))"
         } catch {
             return "Chat tracking paused: \(error.localizedDescription)"

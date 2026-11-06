@@ -25,6 +25,9 @@ struct Provider: TimelineProvider {
         for r in Set((snap?.limits ?? []).compactMap(\.resetsAt)).sorted() where r > now && r < now.addingTimeInterval(6 * 3600) {
             entries.append(UsageEntry(date: r, snapshot: snap))
         }
+        // And one when the reading turns 20 min old, so the "as of" line turns amber on time.
+        if let f = snap?.fetchedAt, f.addingTimeInterval(20 * 60 + 5) > now { entries.append(UsageEntry(date: f.addingTimeInterval(20 * 60 + 5), snapshot: snap)) }
+        entries.sort { $0.date < $1.date }
         completion(Timeline(entries: entries, policy: .after(now.addingTimeInterval(15 * 60))))
     }
 }

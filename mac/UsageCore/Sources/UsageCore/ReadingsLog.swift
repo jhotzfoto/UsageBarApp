@@ -136,9 +136,10 @@ public final class ReadingsLog {
 /// Minimal CSV helpers (quotes, commas, ISO dates).
 public enum CSV {
     public static func iso(_ d: Date) -> String {
-        let f = ISO8601DateFormatter()
-        return f.string(from: d).replacingOccurrences(of: "Z", with: "+00:00")
+        isoLock.withLock { isoOut.string(from: d) }.replacingOccurrences(of: "Z", with: "+00:00")
     }
+    private static let isoOut = ISO8601DateFormatter()
+    private static let isoLock = NSLock()
     public static func date(_ s: String) -> Date? { s.isEmpty ? nil : UsageParser.date(s) }
     public static func num(_ v: Double) -> String { v == v.rounded() ? String(format: "%.1f", v) : String(format: "%.2f", v) }
     public static func quote(_ s: String) -> String {
@@ -146,6 +147,25 @@ public enum CSV {
     }
 
     public static func rows(_ text: String) -> [[String]] {
+        // Fast path: lines without quotes are split directly (almost every row of the log).
+        if !text.contains("\"") {
+            return text.split(whereSeparator: \.isNewline).map {
+                $0.split(separator: ",", omittingEmptySubsequences: false).map { String($0).trimmingCharacters(in: CharacterSet(charactersIn: "\r")) }
+            }
+        }
+        var out: [[String]] = []
+        for line in text.split(whereSeparator: \.isNewline) {
+            if !line.contains("\"") {
+                out.append(line.split(separator: ",", omittingEmptySubsequences: false).map { String($0).trimmingCharacters(in: CharacterSet(charactersIn: "\r")) })
+            } else {
+                out.append(contentsOf: quotedRows(String(line) + "\n"))
+            }
+        }
+        return out
+    }
+
+    /// Full parser for lines with quotes (titles containing commas). Quoted newlines aren't used.
+    static func quotedRows(_ text: String) -> [[String]] {
         var rows: [[String]] = [], row: [String] = [], field = ""
         var inQuotes = false
         var it = Array(text.unicodeScalars)[...]

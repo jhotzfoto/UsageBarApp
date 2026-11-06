@@ -2,6 +2,37 @@
 
 All changes to UsageBarApp, newest first, release-note style. Every change gets an entry.
 
+## 0.2.3 — 2026-11-05 (fixes from an independent pre-mortem review)
+**Fixed**
+- **Freezes as history grows.** Loading 30,000 log rows took 2.2 s on the main thread. A faster date
+  parser and CSV fast path brought it to 0.31 s, and loading now runs off the main thread. New readings are
+  added in memory instead of re-reading the file.
+- **False "not updating" alerts.** One failed fetch (e.g. right after wake) no longer counts as stale; only
+  a reading older than the stale limit does. After wake the app waits 10 s before fetching.
+- **Hammering the API while failing.** Repeated errors now back off 2 → 4 → 8 → 15 min instead of
+  retrying every minute.
+- **Possible permanent hang.** Child processes (Keychain read, osascript) can no longer block forever,
+  and a fetch stuck for over 3 min no longer blocks the next one. The Keychain read waits up to 2 min, so
+  you have time to click Always Allow if macOS ever asks.
+- **Install script could reinstall the old build** when a build failed. It now deletes the old product
+  first and checks the build result.
+- **Menu bar item moving after updates.** The app is now updated in place, keeping the same path and
+  bundle. Checked after this update: the item stayed visible.
+- **Mac widgets:** reloaded only when what they show changes (to save their refresh budget), and they turn
+  amber on time when the reading is 20 min old.
+- **iPhone widget:** refreshes right after the session resets, so 0% shows on time.
+
+**New**
+- When the Claude Code login has expired (e.g. overnight), usage is read through the open claude.ai tab in
+  Chrome instead, so the menu bar doesn't go grey until you use Claude Code.
+- Chat tracking reads Chrome at most every 5 minutes, whatever the check interval.
+
+**Verified**
+- 21/21 tests, including new ones for staleness, date and CSV parsing, and 30k-row load speed. Two of
+  them found real bugs (CRLF line endings; the 2.2 s load).
+- Live after the update: fetching, logging, status line written, memory 68 MB (was 97 MB), menu bar item
+  visible.
+
 ## 0.2.2 — 2026-11-05
 **Changed**
 - iPhone `Claude Usage` no longer signs in through Scriptable's built-in browser. Google blocks it, and the
