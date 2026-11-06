@@ -33,6 +33,7 @@ struct MenuView: View {
                     LimitRow(limit: l, now: model.now, dimmed: model.staleReason != nil, pace: model.pace(for: l))
                 }
                 if let ex = snap.extra { ExtraRow(extra: ex, sessionFull: (snap.session?.effectivePercent(at: model.now) ?? 0) >= 100) }
+                if let c = model.chatSummary { TopChats(summary: c) }
                 Divider()
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Planning").font(.caption).foregroundStyle(.secondary)
@@ -43,7 +44,6 @@ struct MenuView: View {
                             .font(.callout)
                     }
                 }
-                if let c = model.chatSummary { TopChats(summary: c) }
             } else if !model.isFetching {
                 Text("No reading yet").foregroundStyle(.secondary)
             }

@@ -2,6 +2,10 @@
 
 All changes to UsageBarApp, newest first, release-note style. Every change gets an entry.
 
+## 0.5.1 — 2026-11-06
+**Changed**
+- In the menu, **Top chats** now comes right after your limits and **Planning** moves to the bottom.
+
 ## 0.5.0 — 2026-11-05 (UsageBarApp replaces UsageBar)
 **New**
 - **Stays visible in the menu bar.** The app backs up where you put its menu bar item and, at every
