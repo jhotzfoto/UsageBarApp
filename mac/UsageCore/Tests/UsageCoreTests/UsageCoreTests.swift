@@ -459,4 +459,49 @@ final class UsageCoreTests: XCTestCase {
         XCTAssertEqual(g[day]?["Fable"], 4)
         XCTAssertEqual(g[cal.startOfDay(for: day.addingTimeInterval(90000))]?["All models"], 3)
     }
+
+    // MARK: Login renewal
+
+    func testLoginParseReadsOnlyTokenAndExpiry() {
+        let json = #"{"claudeAiOauth":{"accessToken":"tok","refreshToken":"never-used","expiresAt":1800000000000}}"#
+        let l = LoginRenewal.parse(json)
+        XCTAssertEqual(l?.accessToken, "tok")
+        XCTAssertEqual(l?.expiresAt, Date(timeIntervalSince1970: 1_800_000_000))
+        XCTAssertNil(LoginRenewal.parse(#"{"claudeAiOauth":{"accessToken":""}}"#))
+        XCTAssertNil(LoginRenewal.parse("not json"))
+    }
+
+    func testRenewalTiming() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        func login(_ minutesLeft: Double) -> LoginRenewal.Login {
+            .init(accessToken: "t", expiresAt: now.addingTimeInterval(minutesLeft * 60))
+        }
+        XCTAssertNil(LoginRenewal.reason(login: login(120), now: now, lastAttempt: nil))
+        XCTAssertEqual(LoginRenewal.reason(login: login(20), now: now, lastAttempt: nil), .expiringSoon)
+        XCTAssertEqual(LoginRenewal.reason(login: login(-5), now: now, lastAttempt: nil), .expired)
+        XCTAssertEqual(LoginRenewal.reason(login: login(120), refused: true, now: now, lastAttempt: nil), .refused)
+        // Never more than once per 10 minutes, whatever the reason.
+        XCTAssertNil(LoginRenewal.reason(login: login(-5), refused: true, now: now, lastAttempt: now.addingTimeInterval(-300)))
+        XCTAssertEqual(LoginRenewal.reason(login: login(-5), now: now, lastAttempt: now.addingTimeInterval(-601)), .expired)
+        XCTAssertNil(LoginRenewal.reason(login: nil, now: now, lastAttempt: nil))
+        XCTAssertNil(LoginRenewal.reason(login: .init(accessToken: "t", expiresAt: nil), now: now, lastAttempt: nil))
+    }
+
+    func testRenewalLogIsShortAndSecretFree() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let ok = LoginRenewal.logLine(at: now, reason: .expired, newExpiry: now.addingTimeInterval(8 * 3600), error: nil)
+        XCTAssertTrue(ok.contains("expired") && ok.contains("renewed, good until"))
+        let bad = LoginRenewal.logLine(at: now, reason: .refused, newExpiry: nil, error: "line1\nline2")
+        XCTAssertTrue(bad.contains("failed: line1 line2"))
+        for i in 0..<(LoginRenewal.maxLogLines + 20) { LoginRenewal.appendLog("line \(i)", directory: tmp) }
+        let lines = try! String(contentsOf: tmp.appendingPathComponent("login_renewals.log"), encoding: .utf8)
+            .split(separator: "\n")
+        XCTAssertEqual(lines.count, LoginRenewal.maxLogLines)
+        XCTAssertEqual(lines.last, "line \(LoginRenewal.maxLogLines + 19)")
+    }
+
+    func testClaudeCandidatePathsIncludeHomebrew() {
+        XCTAssertEqual(LoginRenewal.candidatePaths(home: "/Users/x").first, "/opt/homebrew/bin/claude")
+        XCTAssertTrue(LoginRenewal.candidatePaths(home: "/Users/x").contains("/Users/x/.local/bin/claude"))
+    }
 }

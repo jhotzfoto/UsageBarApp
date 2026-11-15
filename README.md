@@ -42,6 +42,9 @@ History starts 2026-11-01 (imported from UsageBar).
 
 **How it works**
 - Reads Claude Code's login from the Keychain item "Claude Code-credentials" via `/usr/bin/security`.
+- Keeps that login alive by itself: shortly before it runs out, it runs Claude Code's own `/usage`
+  command (`claude -p /usage`), which makes Claude Code renew its own login. Each renewal is listed in
+  `~/Library/Application Support/UsageBarApp/login_renewals.log` (times only, no secrets).
   It reads the access token and expiry only, and never writes or refreshes the item.
 - Calls `api.anthropic.com/api/oauth/usage` every 5 min (Settings: 2–60), and when you open the menu
   if the reading is over 30 s old. Backs off on HTTP 429. Countdowns tick every minute without API calls.

@@ -22,6 +22,8 @@ request (its project folder in ../UsageBar is kept as history).
 
 ## Rules carried over
 - Never refresh or write the "Claude Code-credentials" Keychain item; read only. Never read the refresh token.
+  Since 0.11.0 (Josh approved 2026-11-11): when the login has under 30 min left, the app runs Claude Code's
+  own `/usage` command (`claude -p /usage --no-session-persistence`; no model call, at most every 10 min) so Claude Code renews its own login.
 - Never get past claude.ai's Cloudflare check. A real browser with your own login is fine; if Cloudflare
   challenges it, stop.
 - Ask before installing anything; say so before deviating from the plan.

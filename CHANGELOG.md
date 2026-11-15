@@ -2,6 +2,22 @@
 
 All changes to UsageBarApp, newest first, release-note style. Every change gets an entry.
 
+## 0.11.0 — 2026-11-15 (no more "Claude Code login expired")
+**Fixed**
+- **The menu bar no longer goes stale when Claude Code's login runs out.** That login lasts a few hours
+  and only renewed when you ran Claude Code in Terminal (the Code tab in the Claude app keeps its own login,
+  so using it never helped). Now, when the login has under 30 minutes left, the app runs Claude Code's own
+  `/usage` command (`claude -p /usage`) in the background and Claude Code renews itself. No model
+  request, no usage cost, at most once every 10 minutes. The app still never touches the login itself.
+- **"Login refused" errors now heal themselves too:** the app renews and retries once before giving up.
+- **Chrome backup:** if Chrome doesn't answer, the error says so plainly instead of claiming the login expired.
+
+**New**
+- **One-click Sign in**, shown only if Claude Code was fully signed out (password change, "log out of all
+  devices"), plus one notification. Opens Terminal on `claude auth login`.
+- **Renewal log** at `~/Library/Application Support/UsageBarApp/login_renewals.log`: when, why, and the
+  result of each renewal (times only, no secrets), so it's easy to check it's working.
+
 ## 0.10.0 — 2026-11-06
 **New**
 - **Models by day** in History: tokens per model each day (a line per model, or stacked bars), a row

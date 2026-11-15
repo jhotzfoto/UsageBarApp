@@ -24,6 +24,10 @@ final class UsageModel: ObservableObject {
     @Published private(set) var iphoneCopyAt: Date?
     /// The iPhone's session-key lifetime record (written by the iPhone script).
     @Published private(set) var phoneKey: PhoneKey.Status?
+    /// Claude Code is fully signed out (automatic renewal can't fix it); the menu shows Sign in.
+    @Published private(set) var needsSignIn = false
+    private var signInNotified = false
+    private var lastRenewAttempt: Date?
     @Published var phoneKeyAlert: Bool { didSet { UserDefaults.standard.set(phoneKeyAlert, forKey: "phoneKeyAlert") } }
 
     @Published var refreshMinutes: Int { didSet { UserDefaults.standard.set(refreshMinutes, forKey: "refreshMinutes") } }
@@ -131,19 +135,12 @@ final class UsageModel: ObservableObject {
         lastAttemptAt = Date()
         defer { isFetching = false }
         do {
-            let raw: [String: Any]
-            do {
-                raw = try await UsageClient.fetch()
-            } catch UsageClient.FetchError.expired where chromeTracking {
-                // Claude Code's login expired (e.g. overnight). Read the same numbers through the open
-                // claude.ai tab instead, so the menu bar doesn't go grey until Claude Code is used again.
-                let tracker = self.tracker
-                let org = await Task.detached(priority: .utility) { tracker.load().org }.value
-                raw = try await UsageClient.fetchViaChrome(org: org)
-            }
+            let raw = try await fetchUsage()
             let s = try UsageParser.snapshot(from: raw)
             snapshot = s
             errorStreak = 0
+            needsSignIn = false
+            signInNotified = false
             try? log.append(s)
             appendReadings(s)
             if Date().timeIntervalSince(lastRollup) > 86400 {
@@ -166,6 +163,65 @@ final class UsageModel: ObservableObject {
         now = Date()
         publish()
         alerts.check(snapshot, now: now)
+    }
+
+    /// Usage numbers, keeping Claude Code's login alive on the way:
+    /// 1. if the login has under 30 min left (or ran out), run Claude Code's own status check so it
+    ///    renews itself; 2. fetch; 3. if the login was refused anyway, renew and retry once;
+    /// 4. last resort, read the numbers through an open claude.ai tab in Chrome.
+    private func fetchUsage() async throws -> [String: Any] {
+        _ = await renewLoginIfNeeded(refused: false)
+        do {
+            return try await UsageClient.fetch()
+        } catch let e as UsageClient.FetchError where e.isLogin {
+            if await renewLoginIfNeeded(refused: true), let raw = try? await UsageClient.fetch() { return raw }
+            if chromeTracking {
+                let tracker = self.tracker
+                let org = await Task.detached(priority: .utility) { tracker.load().org }.value
+                if let raw = try? await UsageClient.fetchViaChrome(org: org) { return raw }
+            }
+            throw needsSignIn ? UsageClient.FetchError.signInNeeded : e
+        } catch UsageClient.FetchError.signInNeeded {
+            markSignInNeeded()
+            throw UsageClient.FetchError.signInNeeded
+        }
+    }
+
+    /// Runs the renewal check when due (see `LoginRenewal.reason`). Returns true if the login is now
+    /// good. Every attempt goes to login_renewals.log (times and outcome only, no secrets).
+    private func renewLoginIfNeeded(refused: Bool) async -> Bool {
+        let login = await Task.detached(priority: .utility) { try? UsageClient.readLogin() }.value
+        guard let reason = LoginRenewal.reason(login: login, refused: refused, now: Date(), lastAttempt: lastRenewAttempt)
+        else { return false }
+        lastRenewAttempt = Date()
+        let result = await Task.detached(priority: .utility) { () -> Result<Date?, Error> in
+            Result { try UsageClient.renewLogin() }
+        }.value
+        let dir = Self.dataDir
+        switch result {
+        case .success(let exp):
+            let renewed = exp.map { $0 > Date().addingTimeInterval(LoginRenewal.renewWithin) } ?? false
+            LoginRenewal.appendLog(LoginRenewal.logLine(at: Date(), reason: reason, newExpiry: exp,
+                                                        error: renewed ? nil : "still expiring after the check"), directory: dir)
+            // Claude Code ran fine but couldn't renew: its own login has ended (signed out elsewhere,
+            // password change). Only then does a person need to do anything.
+            if !renewed, exp.map({ $0 <= Date() }) ?? false { markSignInNeeded() }
+            return renewed
+        case .failure(let err):
+            LoginRenewal.appendLog(LoginRenewal.logLine(at: Date(), reason: reason, newExpiry: nil,
+                                                        error: err.localizedDescription), directory: dir)
+            if case UsageClient.FetchError.signInNeeded = err { markSignInNeeded() }
+            return false
+        }
+    }
+
+    private func markSignInNeeded() {
+        needsSignIn = true
+        guard !signInNotified else { return }
+        signInNotified = true
+        alerts.notify("UsageBarApp needs a one-time sign-in",
+                      "Claude Code was signed out, so usage can't update. Open the menu and click Sign in.",
+                      force: true)
     }
 
     private func reloadLog() async {

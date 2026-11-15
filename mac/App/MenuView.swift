@@ -47,6 +47,10 @@ struct MenuView: View {
                           systemImage: "exclamationmark.triangle.fill")
                         .foregroundStyle(UsageStyle.red).font(.callout.weight(.semibold))
                     Text(reason).font(.caption).foregroundStyle(.secondary)
+                    if model.needsSignIn {
+                        Button("Sign in") { UsageClient.openSignIn() }
+                            .controlSize(.small).padding(.top, 2)
+                    }
                 }
                 Divider()
             }
