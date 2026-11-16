@@ -7,9 +7,22 @@ final class UsageCoreTests: XCTestCase {
     var tmp: URL!
     let t0 = Date(timeIntervalSince1970: 1_793_570_000)   // 2026-11-01 ~17:13 local
 
-    override func setUp() {
+    struct TempFolderNotWritable: Error, CustomStringConvertible {
+        let path: String
+        var description: String {
+            "Can't write the test temp folder (\(path)). If this is Claude Code's sandbox, run the tests outside it."
+        }
+    }
+
+    override func setUpWithError() throws {
         tmp = FileManager.default.temporaryDirectory.appendingPathComponent("usagecore-\(UUID().uuidString)")
-        try? FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
+        // Fail with a clear reason (not a crash) when the temp folder can't be written, e.g. in a sandbox.
+        do {
+            try FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
+            try Data().write(to: tmp.appendingPathComponent(".probe"))
+        } catch {
+            throw TempFolderNotWritable(path: tmp.path)
+        }
     }
     override func tearDown() { try? FileManager.default.removeItem(at: tmp) }
 
@@ -490,14 +503,14 @@ final class UsageCoreTests: XCTestCase {
         XCTAssertNil(LoginRenewal.reason(login: .init(accessToken: "t", expiresAt: nil), now: now, lastAttempt: nil))
     }
 
-    func testRenewalLogIsShortAndSecretFree() {
+    func testRenewalLogIsShortAndSecretFree() throws {
         let now = Date(timeIntervalSince1970: 1_800_000_000)
         let ok = LoginRenewal.logLine(at: now, reason: .expired, newExpiry: now.addingTimeInterval(8 * 3600), error: nil)
         XCTAssertTrue(ok.contains("expired") && ok.contains("renewed, good until"))
         let bad = LoginRenewal.logLine(at: now, reason: .refused, newExpiry: nil, error: "line1\nline2")
         XCTAssertTrue(bad.contains("failed: line1 line2"))
         for i in 0..<(LoginRenewal.maxLogLines + 20) { LoginRenewal.appendLog("line \(i)", directory: tmp) }
-        let lines = try! String(contentsOf: tmp.appendingPathComponent("login_renewals.log"), encoding: .utf8)
+        let lines = try String(contentsOf: tmp.appendingPathComponent("login_renewals.log"), encoding: .utf8)
             .split(separator: "\n")
         XCTAssertEqual(lines.count, LoginRenewal.maxLogLines)
         XCTAssertEqual(lines.last, "line \(LoginRenewal.maxLogLines + 19)")

@@ -2,6 +2,13 @@
 
 All changes to UsageBarApp, newest first, release-note style. Every change gets an entry.
 
+## Tests only — 2026-11-16 (no more test crash reports)
+**Fixed**
+- **The tests no longer crash when they can't write their temp folder** (as happens inside Claude
+  Code's sandbox). On 2026-11-15 a sandboxed run crashed the test runner and left a macOS crash report
+  for `xctest`. Now every test fails with a plain message saying the temp folder can't be written and to
+  run the tests outside the sandbox. The app itself is unchanged (still 0.11.1); nothing to reinstall.
+
 ## 0.11.1 — 2026-11-15 (quieter, better-timed login renewal)
 **Changed**
 - **The app now renews Claude Code's login only in its last few minutes (or once it has run out),
