@@ -166,7 +166,7 @@ final class UsageModel: ObservableObject {
     }
 
     /// Usage numbers, keeping Claude Code's login alive on the way:
-    /// 1. if the login has under 30 min left (or ran out), run Claude Code's own status check so it
+    /// 1. if the login has under 4 min left (or ran out), run Claude Code's own `/usage` command so it
     ///    renews itself; 2. fetch; 3. if the login was refused anyway, renew and retry once;
     /// 4. last resort, read the numbers through an open claude.ai tab in Chrome.
     private func fetchUsage() async throws -> [String: Any] {

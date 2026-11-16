@@ -2,6 +2,15 @@
 
 All changes to UsageBarApp, newest first, release-note style. Every change gets an entry.
 
+## 0.11.1 — 2026-11-15 (quieter, better-timed login renewal)
+**Changed**
+- **The app now renews Claude Code's login only in its last few minutes (or once it has run out),
+  instead of 30 minutes early.** Tonight's first real run showed Claude Code ignores renewal requests
+  until about 5 minutes are left: the tries at 29 and 17 minutes left did nothing and were logged as
+  "failed"; the one at under 5 minutes renewed it (good for another 8 hours). Asking at the right time
+  means no wasted runs and no misleading "failed" lines in the renewal log. If a check misses that short
+  window, the app renews right before its next reading, so the menu bar still doesn't go stale.
+
 ## 0.11.0 — 2026-11-15 (no more "Claude Code login expired")
 **Fixed**
 - **The menu bar no longer goes stale when Claude Code's login runs out.** That login lasts a few hours

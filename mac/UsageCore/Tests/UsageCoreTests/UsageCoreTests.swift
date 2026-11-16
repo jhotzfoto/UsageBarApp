@@ -477,7 +477,10 @@ final class UsageCoreTests: XCTestCase {
             .init(accessToken: "t", expiresAt: now.addingTimeInterval(minutesLeft * 60))
         }
         XCTAssertNil(LoginRenewal.reason(login: login(120), now: now, lastAttempt: nil))
-        XCTAssertEqual(LoginRenewal.reason(login: login(20), now: now, lastAttempt: nil), .expiringSoon)
+        // Claude Code only renews in its last ~5 minutes, so don't ask at 20 or 10 minutes left.
+        XCTAssertNil(LoginRenewal.reason(login: login(20), now: now, lastAttempt: nil))
+        XCTAssertNil(LoginRenewal.reason(login: login(10), now: now, lastAttempt: nil))
+        XCTAssertEqual(LoginRenewal.reason(login: login(3), now: now, lastAttempt: nil), .expiringSoon)
         XCTAssertEqual(LoginRenewal.reason(login: login(-5), now: now, lastAttempt: nil), .expired)
         XCTAssertEqual(LoginRenewal.reason(login: login(120), refused: true, now: now, lastAttempt: nil), .refused)
         // Never more than once per 10 minutes, whatever the reason.

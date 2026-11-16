@@ -6,8 +6,11 @@ import Foundation
 /// item). Instead, when the login is close to running out, it runs Claude Code's own `/usage` command
 /// (`claude -p /usage --no-session-persistence`), and Claude Code renews its own login. No model request.
 public enum LoginRenewal {
-    /// Renew when less than this is left (or already expired).
-    public static let renewWithin: TimeInterval = 30 * 60
+    /// Renew when less than this is left (or already expired). Claude Code only renews in roughly the
+    /// last 5 minutes (seen 2026-11-15: no renewal at 29 and 17 min left, renewed at 4 min 44 s left),
+    /// so asking earlier just wastes a run. If a check misses this window, the "expired" case renews
+    /// right before the next fetch, so readings don't go stale.
+    public static let renewWithin: TimeInterval = 4 * 60
     /// Never run the check more often than this.
     public static let minGap: TimeInterval = 10 * 60
     /// Keep the renewal log short.
