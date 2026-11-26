@@ -2,6 +2,20 @@
 
 All changes to UsageBarApp, newest first, release-note style. Every change gets an entry.
 
+## iPhone Claude History widget — 2026-11-26 (right now comes from the phone)
+**Added**
+- **The History widget now uses the phone's own live reading for "right now".** On the phone, the
+  first fix showed the Mac's history was 34 minutes old: the Mac uploads every 10 minutes, but iCloud
+  was slow to bring those updates down to the phone. The Claude Usage script already reads claude.ai
+  itself and saves that reading on the phone, so the History widget now uses it when it's newer than
+  the Mac's history. Today's line and dot, the day's total and the 7-day total are brought up to that
+  reading, counting the same way the Mac does. The header says "Phone · 4m ago" when that happens.
+- Checked against real data: with the Mac's history cut off 5 to 60 minutes early, the phone reading
+  brought today's total back to exactly the Mac's real number. If a session reset in between, only the
+  new session can be counted (2 to 3% short in the test) until the Mac's update arrives.
+- Only works while the Claude Usage script can read claude.ai on the phone. Otherwise it shows the
+  Mac's history as before. Just after midnight it keeps showing yesterday until the Mac's new day arrives.
+
 ## iPhone Claude History widget — 2026-11-25 (no more blank widget, clearer numbers)
 **Fixed**
 - **The widget no longer sits blank or says "no info" until you tap it.** In the background iOS gives a

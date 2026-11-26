@@ -6,6 +6,9 @@
 // every 10 minutes while the Mac is awake. Usage numbers and times only.
 // The last good copy is also kept on the phone (outside iCloud), so the widget still shows the
 // latest it had when iCloud is slow to hand over the new file in the background.
+// "Right now" comes from the phone's own reading when that is newer: the Claude Usage script reads
+// claude.ai itself and saves it (UsageBarApp/phone-reading.json), so today's line, its dot and the
+// day's total stay current even while iCloud is slow to bring the Mac's update.
 //
 // "Sessions used" adds up how much of each 5-hour session was used today: 1.0 = one full session.
 //
@@ -14,6 +17,7 @@
 const fm = FileManager.iCloud();
 const dir = fm.joinPath(fm.documentsDirectory(), 'UsageBarApp');
 const FILE = fm.joinPath(dir, 'history.json');
+const PHONE = fm.joinPath(dir, 'phone-reading.json');   // written on this phone by Claude Usage
 const local = FileManager.local();
 const CACHE = local.joinPath(local.documentsDirectory(), 'claude-history-cache.json');
 const REFRESH_MIN = 10;     // what the widget asks iOS for; iOS may wait longer
@@ -56,7 +60,57 @@ async function load() {
   }
   return saved || fresh;
 }
+
+// The phone's own latest session reading, if Claude Usage has saved one here (no waiting on iCloud:
+// this phone wrote it).
+function loadPhone() {
+  try {
+    if (!fm.fileExists(PHONE) || !fm.isFileDownloaded(PHONE)) return null;
+    const r = JSON.parse(fm.readString(PHONE));
+    const s = r && r.source === 'phone' && Array.isArray(r.limits) && r.limits.find(l => l.group === 'session');
+    return s && r.fetchedAt && s.resetsAt && typeof s.percent === 'number'
+      ? {at: new Date(r.fetchedAt), percent: s.percent, resetsAt: new Date(s.resetsAt)} : null;
+  } catch (e) { return null; }
+}
 // END load
+
+// BEGIN withPhone (pure; tested on the Mac with node)
+// Brings the Mac's history up to the phone's newer reading, counting the way the Mac does:
+// in the same 5-hour session, the % gained since the Mac's last reading; in a new session, all of
+// its % (everything since it started). The gain goes to the half-hour of the phone's reading, the
+// half-hours the current session covered become "session", and the line gets the phone's point
+// (as a separate piece after a gap of over 20 minutes, as the Mac does, or after a reset whose
+// exact time isn't known). Returns h unchanged if
+// the phone reading isn't newer, or is from another day.
+function withPhone(h, ph) {
+  if (!h || !ph) return h;
+  const day0 = new Date(h.day).getTime(), at = ph.at.getTime(), macAt = new Date(h.generatedAt).getTime();
+  if (!(at > macAt) || at < day0 || at >= day0 + 86400000) return h;
+  const out = JSON.parse(JSON.stringify(h));
+  const SESSION = 5 * 3600000, GAP = 20 * 60000;
+  const winStart = ph.resetsAt.getTime() - SESSION;
+  const pNow = ph.resetsAt.getTime() > at ? ph.percent : 0;   // a session past its reset reads 0
+  const last = out.line.length ? out.line[out.line.length - 1] : null;
+  const lastAt = last ? day0 + last.m * 60000 : null;
+  // Same session if it had already started at the Mac's last reading (1-minute leeway).
+  const same = last && winStart <= lastAt + 60000;
+  const gain = Math.max(0, same ? pNow - last.p : pNow);
+  const slotMs = (out.slotMinutes || 30) * 60000;
+  const slotOf = t => Math.min(out.slots.length - 1, Math.floor((t - day0) / slotMs));
+  if (gain > 0) out.slots[slotOf(at)].used = Math.round((out.slots[slotOf(at)].used + gain) * 10) / 10;
+  if (pNow > 0) {
+    for (let i = slotOf(Math.max(winStart, day0)); i <= slotOf(at); i++)
+      if (out.slots[i].state === 'future' || out.slots[i].state === 'noData') out.slots[i].state = 'active';
+  }
+  // A new piece after a gap, or when a reset came in between (its exact time isn't known here).
+  const seg = last ? (at - lastAt > GAP || !same ? last.s + 1 : last.s) : 0;
+  out.line.push({m: Math.round((at - day0) / 60000), p: pNow, s: seg});
+  out.today = Object.assign({}, out.today, {used: out.today.used + gain});
+  if (out.days.length) out.days[out.days.length - 1] = Object.assign({}, out.days[out.days.length - 1], {used: out.days[out.days.length - 1].used + gain});
+  out.phoneAt = ph.at.toISOString();
+  return out;
+}
+// END withPhone
 
 const isToday = d => new Date(d).toDateString() === new Date().toDateString();
 const hours = h => (h < 10 ? h.toFixed(1) : Math.round(h)) + ' h';
@@ -71,8 +125,8 @@ function summary(d) {
 }
 
 function ageText(h) {
-  const min = Math.round((Date.now() - new Date(h.generatedAt)) / 60000);
-  return (min > STALE_MIN ? '⚠︎ ' : '') + 'Mac · '
+  const min = Math.round((Date.now() - new Date(h.phoneAt || h.generatedAt)) / 60000);
+  return (min > STALE_MIN ? '⚠︎ ' : '') + (h.phoneAt ? 'Phone · ' : 'Mac · ')
     + (min < 1 ? 'now' : min < 120 ? min + 'm ago' : min < 2880 ? Math.round(min / 60) + 'h ago' : Math.round(min / 1440) + 'd ago');
 }
 
@@ -229,7 +283,7 @@ function build(family, h) {
   return w;
 }
 
-const history = await load();
+const history = withPhone(await load(), loadPhone());
 if (config.runsInWidget) {
   Script.setWidget(build(config.widgetFamily, history));
 } else {
