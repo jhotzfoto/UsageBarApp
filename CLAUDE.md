@@ -5,5 +5,6 @@
 - Login renewal: 31 in a row with no failures by 2026-11-25, so the log watch is closed.
 - 2026-11-25: iPhone Claude History widget fixed (keeps a copy on the phone so it isn't blank, 10-min refresh asks, "1.6 sessions used" instead of "156%"). Copied into Scriptable's iCloud folder. Tested with a fake Scriptable on the Mac only.
 - 2026-11-26: iCloud was slow to bring the Mac's history to the phone (34 min), so History now uses the phone's own Claude Usage reading for "right now" when newer (header "Phone · …").
-- Next: on the phone, check the History header says "Phone · Xm ago" with a small number and the total matches the Mac's menu.
-- Latest handoff: handoffs/handoff_2026-11-17_usagebarapp-test-crash-and-git-index.md. The 0.11.1 one still holds the app rules and how to build.
+- Josh confirmed on the phone: header shows "Phone · 2m ago". Phone-script tests: `iphone/tests/` (see handoff).
+- Next: nothing pending. Optionally glance that the History widget keeps refreshing on its own.
+- Latest handoff: handoffs/handoff_2026-11-26_usagebarapp-iphone-history-widget.md. The 0.11.1 one still holds the app rules and how to build.
