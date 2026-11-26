@@ -2,12 +2,20 @@
 // Run from the project root:
 //   node iphone/tests/history-widget.test.mjs iphone/ClaudeHistory.js iphone/tests/fixtures/history-2026-11-25-2350.json iphone/tests/fixtures/phone-reading-2026-11-25-2354.json
 // Every line should say PASS. The expected numbers (1.6 sessions, 2.0 h idle) come from these fixtures.
+// The script sees a fake clock pinned 2 min after the phone fixture's reading, so results don't depend on
+// when the tests are run (before 2026-11-26 they failed once the fixtures were over 30 min old).
 import fs from 'fs';
+process.env.TZ = 'America/Toronto';   // the widget's "today" is the phone's local day (Josh is in ET)
 const [,, scriptPath, dataPath] = process.argv;
 const src = fs.readFileSync(scriptPath, 'utf8');
 const real = fs.readFileSync(dataPath, 'utf8');
+const NOW = new Date(JSON.parse(fs.readFileSync(process.argv[4], 'utf8')).fetchedAt).getTime() + 2 * 60000;
+const fakeDate = now => class extends Date {
+  constructor(...a) { a.length ? super(...a) : super(now); }
+  static now() { return now; }
+};
 
-async function run({family, icloud, cache, inWidget = true}) {
+async function run({family, icloud, cache, inWidget = true, now = NOW}) {
   const texts = []; const store = {cache};
   const W = class { addText(t){ texts.push(t); return new Proxy({}, {get: (o,k) => k in o ? o[k] : () => {}, set: (o,k,v) => (o[k]=v, true)}); } addStack(){ return this; } addSpacer(){} addImage(){ return {}; } centerAlignContent(){} };
   class DC { set size(v){} fillRect(){} setFillColor(){} addPath(){} setStrokeColor(){} setLineWidth(){} strokePath(){} fillEllipse(){} setFont(){} setTextColor(){} drawText(){} getImage(){ return {}; } }
@@ -25,6 +33,7 @@ async function run({family, icloud, cache, inWidget = true}) {
     ListWidget: W, DrawContext: DC, Color: class {}, Size: class {}, Rect: class {}, Point: class {}, Path: class { move(){} addLine(){} },
     Font: new Proxy({}, { get: () => () => ({}) }),
     Script: { setWidget: () => {}, complete: () => {} },
+    Date: fakeDate(now),
   };
   const t0 = Date.now();
   const fn = new Function(...Object.keys(g), `return (async () => { ${src} })();`);
@@ -57,3 +66,5 @@ r = await run({family: 'medium', icloud: {exists: true, downloaded: false, hang:
 ok('H iCloud stuck + saved copy + phone reading -> merged, not blank', r.texts.some(t => t.startsWith('Phone · ')), r.texts.slice(0,3).join(' | '));
 r = await run({family: 'medium', icloud: {exists: true, downloaded: true, text: real, phone: '{oops'}, cache: null});
 ok('I broken phone file -> ignored, Mac data shown', r.texts.some(t => t.startsWith('Mac · ')));
+r = await run({family: 'medium', icloud: {exists: true, downloaded: true, text: real, phone}, cache: null, now: NOW + 45 * 60000});
+ok('J same data seen 45 min later -> ⚠︎ warning shown', r.texts.some(t => t.startsWith('⚠︎ Phone · ')), r.texts.slice(0,3).join(' | '));

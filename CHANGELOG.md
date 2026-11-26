@@ -9,6 +9,11 @@ All changes to UsageBarApp, newest first, release-note style. Every change gets 
   is now `.git.nosync` (iCloud skips anything ending in `.nosync`), with a one-line `.git` file pointing
   to it. Same fix applied to PingPlace. Nothing about the app changes, and GitHub stays the backup.
 - Moved a stray Finder file (`.DS_Store`) out of git's refs folder; `git fsck` is now clean.
+- **Phone-script tests no longer fail depending on the time of day.** Three History widget checks (G, H, I)
+  passed only within 30 minutes of the saved test data; after that the widget rightly adds ⚠︎ and the
+  checks didn't expect it. The tests now give the script a fake clock pinned 2 minutes after the saved
+  phone reading, and a new check (J) confirms the ⚠︎ appears when the same data is 45 minutes old.
+  14 widget checks and 7 accuracy checks pass. The widget itself is unchanged.
 
 ## iPhone Claude History widget — 2026-11-26 (right now comes from the phone)
 **Added**

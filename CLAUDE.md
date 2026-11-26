@@ -6,6 +6,6 @@
 - 2026-11-25: iPhone Claude History widget fixed (keeps a copy on the phone so it isn't blank, 10-min refresh asks, "1.6 sessions used" instead of "156%"). Copied into Scriptable's iCloud folder. Tested with a fake Scriptable on the Mac only.
 - 2026-11-26: iCloud was slow to bring the Mac's history to the phone (34 min), so History now uses the phone's own Claude Usage reading for "right now" when newer (header "Phone · …").
 - Josh confirmed on the phone: header shows "Phone · 2m ago". Phone-script tests: `iphone/tests/` (see handoff).
-- 2026-11-26 (later): git's folder is now `.git.nosync` (a one-line `.git` file points to it), so iCloud stops undoing git's saves. Renaming `.git` needs an unsandboxed run. Health check that night: all fine; 3 phone tests (G, H, I) fail once the fixtures are over 30 min old (test flaw: they don't expect the ⚠︎ prefix).
-- Next: fix the 3 time-dependent phone tests. Optionally glance that the History widget keeps refreshing on its own.
+- 2026-11-26 (later): git's folder is now `.git.nosync` (a one-line `.git` file points to it), so iCloud stops undoing git's saves. Renaming `.git` needs an unsandboxed run. Health check that night: all fine. Phone tests now use a pinned fake clock, so they pass any time (14 widget + 7 accuracy checks).
+- Next: nothing pending. Optionally glance that the History widget keeps refreshing on its own, and that git stays clean after the next few commits.
 - Latest handoff: handoffs/handoff_2026-11-26_usagebarapp-iphone-history-widget.md. The 0.11.1 one still holds the app rules and how to build.
