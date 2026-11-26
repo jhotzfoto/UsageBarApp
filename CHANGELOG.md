@@ -2,6 +2,14 @@
 
 All changes to UsageBarApp, newest first, release-note style. Every change gets an entry.
 
+## Project housekeeping — 2026-11-26 (git out of iCloud sync)
+**Fixed**
+- **Git no longer shows every file as "deleted" after a commit.** It happened twice (Nov 17 and Nov 26):
+  iCloud seems to undo git's last rename of its file list, leaving only the temporary copy. Git's folder
+  is now `.git.nosync` (iCloud skips anything ending in `.nosync`), with a one-line `.git` file pointing
+  to it. Same fix applied to PingPlace. Nothing about the app changes, and GitHub stays the backup.
+- Moved a stray Finder file (`.DS_Store`) out of git's refs folder; `git fsck` is now clean.
+
 ## iPhone Claude History widget — 2026-11-26 (right now comes from the phone)
 **Added**
 - **The History widget now uses the phone's own live reading for "right now".** On the phone, the

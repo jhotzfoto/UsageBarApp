@@ -3,3 +3,5 @@ xcuserdata/
 DerivedData/
 build/
 *.xcuserstate
+# git's own folder, renamed so iCloud doesn't sync it (see CHANGELOG 2026-11-26)
+.git.nosync/
