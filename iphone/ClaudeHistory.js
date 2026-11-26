@@ -4,12 +4,20 @@
 //
 // Data: the Mac app's history (UsageBarApp/history.json in Scriptable's iCloud folder), written
 // every 10 minutes while the Mac is awake. Usage numbers and times only.
+// The last good copy is also kept on the phone (outside iCloud), so the widget still shows the
+// latest it had when iCloud is slow to hand over the new file in the background.
+//
+// "Sessions used" adds up how much of each 5-hour session was used today: 1.0 = one full session.
 //
 // Charts are lines by default. Type "bars" in the widget's Parameter field for bar charts.
 
 const fm = FileManager.iCloud();
 const dir = fm.joinPath(fm.documentsDirectory(), 'UsageBarApp');
 const FILE = fm.joinPath(dir, 'history.json');
+const local = FileManager.local();
+const CACHE = local.joinPath(local.documentsDirectory(), 'claude-history-cache.json');
+const REFRESH_MIN = 10;     // what the widget asks iOS for; iOS may wait longer
+const STALE_MIN = 30;       // older than this gets a ⚠︎ in the age text
 
 const BLUE = new Color('#0A84FF'), AMBER = new Color('#FF9F0A'), RED = new Color('#FF3B30');
 const GREEN = new Color('#34C759'), DIM = new Color('#8E8E93');
@@ -20,24 +28,52 @@ const SHADE = {
   future: new Color('#8E8E93', 0.05),
 };
 
-async function load() {
-  try { await fm.downloadFileFromiCloud(FILE); } catch (e) {}
-  try { return fm.fileExists(FILE) ? JSON.parse(fm.readString(FILE)) : null; } catch (e) { return null; }
+// BEGIN load (tested on the Mac with node and a fake Scriptable)
+function parseHistory(text) {
+  try {
+    const h = JSON.parse(text);
+    return h && h.today && Array.isArray(h.slots) && Array.isArray(h.days) && h.generatedAt ? h : null;
+  } catch (e) { return null; }
 }
+
+// Resolves after ms, so a stuck iCloud download can't use up the widget's few seconds.
+function wait(ms) { return new Promise(resolve => Timer.schedule(ms, false, resolve)); }
+
+// Newest of: the iCloud copy (if iCloud hands it over in time) and the phone's own saved copy.
+async function load() {
+  let fresh = null;
+  try {
+    if (fm.fileExists(FILE)) {
+      await Promise.race([fm.downloadFileFromiCloud(FILE).catch(() => {}), wait(config.runsInWidget ? 5000 : 20000)]);
+      if (fm.isFileDownloaded(FILE)) fresh = parseHistory(fm.readString(FILE));
+    }
+  } catch (e) {}
+  let saved = null;
+  try { if (local.fileExists(CACHE)) saved = parseHistory(local.readString(CACHE)); } catch (e) {}
+  if (fresh && (!saved || new Date(fresh.generatedAt) >= new Date(saved.generatedAt))) {
+    try { local.writeString(CACHE, JSON.stringify(fresh)); } catch (e) {}
+    return fresh;
+  }
+  return saved || fresh;
+}
+// END load
 
 const isToday = d => new Date(d).toDateString() === new Date().toDateString();
 const hours = h => (h < 10 ? h.toFixed(1) : Math.round(h)) + ' h';
+// Session % added up, shown as sessions: 156 -> "1.6", 1200 -> "12".
+const sessions = pct => { const s = pct / 100; return s < 10 ? s.toFixed(1) : String(Math.round(s)); };
 
 function summary(d) {
-  const parts = ['Used ' + Math.round(d.used) + '%'];
-  if (d.unusedAtReset > 0) parts.push(Math.round(d.unusedAtReset) + '% unused');
+  const parts = [sessions(d.used) + ' sessions used'];
+  if (d.unusedAtReset > 0) parts.push(sessions(d.unusedAtReset) + ' unused');
   parts.push(hours(d.idleHours) + ' idle');
   return parts.join(' · ');
 }
 
 function ageText(h) {
   const min = Math.round((Date.now() - new Date(h.generatedAt)) / 60000);
-  return 'Mac · ' + (min < 1 ? 'now' : min < 120 ? min + 'm ago' : Math.round(min / 60) + 'h ago');
+  return (min > STALE_MIN ? '⚠︎ ' : '') + 'Mac · '
+    + (min < 1 ? 'now' : min < 120 ? min + 'm ago' : min < 2880 ? Math.round(min / 60) + 'h ago' : Math.round(min / 1440) + 'd ago');
 }
 
 const BARS = String(args.widgetParameter || '').trim().toLowerCase() === 'bars';
@@ -134,20 +170,20 @@ function header(w, h, title) {
 
 function build(family, h) {
   const w = new ListWidget();
-  w.refreshAfterDate = new Date(Date.now() + 30 * 60000);
+  w.refreshAfterDate = new Date(Date.now() + REFRESH_MIN * 60000);
   if (!h) {
-    const t = w.addText('No Claude history yet. The Mac app shares it every 10 minutes.');
+    const t = w.addText('No Claude history on this phone yet. Open this script once in Scriptable to fetch it.');
     t.font = Font.systemFont(11);
     return w;
   }
   const day = isToday(h.day) ? 'Today' : new Date(h.day).toLocaleDateString(undefined, {weekday: 'short', month: 'short', day: 'numeric'});
   const d = h.today;
 
-  if (family === 'accessoryInline') { w.addText(day + ': ' + Math.round(d.used) + '% · ' + hours(d.idleHours) + ' idle'); return w; }
+  if (family === 'accessoryInline') { w.addText(day + ': ' + sessions(d.used) + ' sessions · ' + hours(d.idleHours) + ' idle'); return w; }
   if (family === 'accessoryCircular') {
     w.addAccessoryWidgetBackground = true;
-    const t = w.addText(Math.round(d.used) + '%'); t.font = Font.boldRoundedSystemFont(15); t.centerAlignText();
-    const s = w.addText(hours(d.idleHours)); s.font = Font.systemFont(9); s.centerAlignText();
+    const t = w.addText(sessions(d.used)); t.font = Font.boldRoundedSystemFont(15); t.centerAlignText();
+    const s = w.addText('sessions'); s.font = Font.systemFont(8); s.centerAlignText();
     return w;
   }
   if (family === 'accessoryRectangular') {
@@ -159,9 +195,9 @@ function build(family, h) {
   if (family === 'small') {
     header(w, h, day);
     w.addSpacer(2);
-    const big = w.addText(Math.round(d.used) + '%'); big.font = Font.boldRoundedSystemFont(28);
-    const l1 = w.addText('used · ' + hours(d.idleHours) + ' idle'); l1.font = Font.systemFont(10); l1.textColor = DIM;
-    if (d.unusedAtReset > 0) { const l2 = w.addText(Math.round(d.unusedAtReset) + '% unused at reset'); l2.font = Font.systemFont(10); l2.textColor = AMBER; }
+    const big = w.addText(sessions(d.used)); big.font = Font.boldRoundedSystemFont(28);
+    const l1 = w.addText('sessions used · ' + hours(d.idleHours) + ' idle'); l1.font = Font.systemFont(10); l1.textColor = DIM;
+    if (d.unusedAtReset > 0) { const l2 = w.addText(sessions(d.unusedAtReset) + ' unused at resets'); l2.font = Font.systemFont(10); l2.textColor = AMBER; }
     w.addSpacer();
     const img = w.addImage(timelineImage(h, 130, 36)); img.imageSize = new Size(130, 36);
     return w;
@@ -183,9 +219,9 @@ function build(family, h) {
     w.addSpacer(4);
     const di = w.addImage(daysImage(h, 310, 96)); di.imageSize = new Size(310, 96);
     w.addSpacer(3);
-    legend(w, [['session % used', BLUE], ['idle hours', AMBER]]);
+    legend(w, [['sessions used', BLUE], ['idle hours', AMBER]]);
     const sum = (k) => h.days.reduce((a, x) => a + x[k], 0);
-    const st = w.addText('7 days: ' + Math.round(sum('used')) + '% used · ' + Math.round(sum('unusedAtReset')) + '% unused at resets · '
+    const st = w.addText('7 days: ' + sessions(sum('used')) + ' sessions used · ' + sessions(sum('unusedAtReset')) + ' unused at resets · '
       + hours(sum('idleHours')) + ' idle (room for ~' + (sum('idleHours') / 5).toFixed(1) + ' more sessions)');
     st.font = Font.systemFont(10); st.textColor = DIM;
   }

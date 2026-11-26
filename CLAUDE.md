@@ -2,6 +2,7 @@
 
 ## Current state / Next step
 - 0.11.1 installed and on GitHub (private, main): renews Claude Code's login automatically via `claude -p /usage`, in its last 4 min or once expired. Verified: renewed on its own 2026-11-15 22:53, 2026-11-16 06:51 and 14:49 ET (Claude Code ignores renewal until ~5 min left).
-- 2026-11-16/17: tests now fail with a plain message instead of crashing in the sandbox (1440a57). Git's index was lost (likely iCloud) and restored from index.lock. The app is unchanged.
-- Next: glance at `~/Library/Application Support/UsageBarApp/login_renewals.log` over the next few days; it should show only "renewed" lines.
+- Login renewal: 31 in a row with no failures by 2026-11-25, so the log watch is closed.
+- 2026-11-25: iPhone Claude History widget fixed (keeps a copy on the phone so it isn't blank, 10-min refresh asks, "1.6 sessions used" instead of "156%"). Copied into Scriptable's iCloud folder. Tested with a fake Scriptable on the Mac only.
+- Next: check on the phone that the History widget shows numbers without tapping, and the age stays under ~30 min.
 - Latest handoff: handoffs/handoff_2026-11-17_usagebarapp-test-crash-and-git-index.md. The 0.11.1 one still holds the app rules and how to build.

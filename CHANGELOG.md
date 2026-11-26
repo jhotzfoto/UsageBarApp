@@ -2,6 +2,24 @@
 
 All changes to UsageBarApp, newest first, release-note style. Every change gets an entry.
 
+## iPhone Claude History widget — 2026-11-25 (no more blank widget, clearer numbers)
+**Fixed**
+- **The widget no longer sits blank or says "no info" until you tap it.** In the background iOS gives a
+  widget only a few seconds, and iCloud often hadn't handed over the Mac's newest file in time, so the
+  widget had nothing to show. It now keeps its own copy of the last good history on the phone and shows
+  that when iCloud is slow. It gives up waiting on iCloud after 5 seconds instead of hanging. The age text
+  ("Mac · 14m ago") gets a ⚠︎ when what it shows is over 30 minutes old.
+- **Asks iOS to refresh every 10 minutes** (was 30), to match how often the Mac shares. iOS still decides
+  the real timing and often waits longer.
+
+**Changed**
+- **"144%" is now "1.4 sessions used".** The number was always right: it adds up how much of each 5-hour
+  session you used today, so it passes 100% once you've used more than one session's worth. Shown as
+  sessions it reads plainly. "Unused at reset" is in sessions too. The live session line in the chart
+  stays in % (0 to 100% of the current session).
+- The Mac app is unchanged (still 0.11.1). The updated script was copied into Scriptable's iCloud folder,
+  so the phone picks it up on its own.
+
 ## Tests only — 2026-11-16 (no more test crash reports)
 **Fixed**
 - **The tests no longer crash when they can't write their temp folder** (as happens inside Claude
