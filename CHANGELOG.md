@@ -9,6 +9,9 @@ All changes to UsageBarApp, newest first, release-note style. Every change gets 
   is now `.git.nosync` (iCloud skips anything ending in `.nosync`), with a one-line `.git` file pointing
   to it. Same fix applied to PingPlace. Nothing about the app changes, and GitHub stays the backup.
 - Moved a stray Finder file (`.DS_Store`) out of git's refs folder; `git fsck` is now clean.
+- **New research report:** `docs/reports/Claude session and weekly limits.md` explains how the 5-hour and
+  weekly limits fit together on Max, using this app's own readings (about 16% of the week per full
+  session), plus what to change. Research notes are in `docs/research_notes/`.
 - **Phone-script tests no longer fail depending on the time of day.** Three History widget checks (G, H, I)
   passed only within 30 minutes of the saved test data; after that the widget rightly adds ⚠︎ and the
   checks didn't expect it. The tests now give the script a fake clock pinned 2 minutes after the saved
